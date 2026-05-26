@@ -1,0 +1,19 @@
+.admin-welcome {
+    margin-bottom: var(--space-xl);
+}
+.admin-welcome h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: var(--space-xs);
+}
+.admin-welcome p {
+    color: var(--color-text-secondary);
+    font-size: 0.9375rem;
+}
+
+.admin-quick-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    padding: var(--space-sm) 0;
+}

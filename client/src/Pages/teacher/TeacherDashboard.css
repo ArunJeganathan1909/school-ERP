@@ -1,0 +1,12 @@
+.teacher-welcome {
+    margin-bottom: var(--space-xl);
+}
+.teacher-welcome h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: var(--space-xs);
+}
+.teacher-welcome p {
+    color: var(--color-text-secondary);
+    font-size: 0.9375rem;
+}

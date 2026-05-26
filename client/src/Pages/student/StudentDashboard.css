@@ -1,0 +1,35 @@
+.student-welcome {
+    margin-bottom: var(--space-xl);
+}
+
+.student-welcome h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-xs);
+}
+
+.student-welcome p {
+    color: var(--color-text-secondary);
+    font-size: 0.9375rem;
+}
+
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-2xl) var(--space-lg);
+    color: var(--color-text-muted);
+    text-align: center;
+    gap: var(--space-xs);
+}
+
+.empty-state__icon {
+    font-size: 2.5rem;
+    margin-bottom: var(--space-sm);
+}
+
+.empty-state p {
+    font-size: 0.875rem;
+}
