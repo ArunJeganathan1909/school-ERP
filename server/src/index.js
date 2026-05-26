@@ -16,7 +16,7 @@ app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }));
 app.use(express.json({ limit: '10kb'}));
 app.use(morgan('dev'));
 
-// RAte limiter: max 100 requests per 15 min per IP
+// Rate limiter: max 100 requests per 15 min per IP
 app.use('/api', rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
@@ -29,6 +29,9 @@ app.use('/api', rateLimit({
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
+app.use('/api/courses',     require('./routes/courseRoutes'));
+app.use('/api/subjects',    require('./routes/subjectRoutes'));
+app.use('/api/enrollments', require('./routes/enrollmentRoutes'));
 
 // Health check
 app.get('/', (req, res) =>

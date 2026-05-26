@@ -12,11 +12,15 @@ import StudentDashboard from './pages/student/StudentDashboard';
 import TeacherDashboard from './pages/teacher/TeacherDashboard';
 import AdminDashboard from './pages/admin/AdminDashboard';
 
+// Phase 3
+import CourseList from './pages/shared/CourseList';
+import CourseDetail from './pages/shared/CourseDetail';
+import ManageCourses from './pages/admin/ManageCourses';
+import MyCourses from './pages/student/MyCourses';
+
 export default function App() {
   const dispatch = useDispatch();
-
   useEffect(() => {
-    // Restore user from token on page reload
     if (localStorage.getItem('token')) dispatch(fetchMe());
   }, [dispatch]);
 
@@ -27,27 +31,24 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          <Route path="/student/dashboard" element={
-            <RoleRoute roles={['student']}>
-              <StudentDashboard />
-            </RoleRoute>
-          } />
+          {/* Dashboards */}
+          <Route path="/student/dashboard" element={<RoleRoute roles={['student']}><StudentDashboard /></RoleRoute>} />
+          <Route path="/teacher/dashboard" element={<RoleRoute roles={['teacher']}><TeacherDashboard /></RoleRoute>} />
+          <Route path="/admin/dashboard"   element={<RoleRoute roles={['admin']}><AdminDashboard /></RoleRoute>} />
 
-          <Route path="/teacher/dashboard" element={
-            <RoleRoute roles={['teacher']}>
-              <TeacherDashboard />
-            </RoleRoute>
-          } />
+          {/* Phase 3 - Courses (shared: all roles) */}
+          <Route path="/courses"     element={<PrivateRoute><div className="app-shell"><div className="main-content" style={{marginLeft:'var(--sidebar-width)'}}><CourseList /></div></div></PrivateRoute>} />
+          <Route path="/courses/:id" element={<PrivateRoute><CourseDetail /></PrivateRoute>} />
 
-          <Route path="/admin/dashboard" element={
-            <RoleRoute roles={['admin']}>
-              <AdminDashboard />
-            </RoleRoute>
-          } />
+          {/* Student */}
+          <Route path="/student/courses" element={<RoleRoute roles={['student']}><MyCourses /></RoleRoute>} />
+
+          {/* Admin */}
+          <Route path="/admin/courses" element={<RoleRoute roles={['admin']}><ManageCourses /></RoleRoute>} />
 
           <Route path="/unauthorized" element={
-            <div className="min-h-screen flex items-center justify-center text-gray-500">
-              Access denied — you don't have permission to view this page.
+            <div className="min-h-screen" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'var(--color-text-secondary)' }}>
+              Access denied.
             </div>
           } />
         </Routes>
