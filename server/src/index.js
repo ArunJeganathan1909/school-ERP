@@ -32,6 +32,10 @@ app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/courses',     require('./routes/courseRoutes'));
 app.use('/api/subjects',    require('./routes/subjectRoutes'));
 app.use('/api/enrollments', require('./routes/enrollmentRoutes'));
+app.use('/api/lessons', require('./routes/lessonRoutes'));
+app.use('/api/assignments', require('./routes/assignmentRoutes'));
+app.use('/api/submissions', require('./routes/submissionRoutes'));
+app.use('/api/quizzes', require('./routes/quizRoutes'));
 
 // Health check
 app.get('/', (req, res) =>

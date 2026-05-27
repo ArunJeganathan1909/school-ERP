@@ -4,25 +4,27 @@ import { logout } from '../store/slices/authSlice';
 
 const NAV_ITEMS = {
     student: [
-        { label: 'Dashboard', icon: '⊞', path: '/student/dashboard' },
-        { label: 'My Courses', icon: '📚', path: '/student/courses' },
-        { label: 'Attendance', icon: '✅', path: '/student/attendance' },
-        { label: 'Grades', icon: '📊', path: '/student/grades' },
-        { label: 'Timetable', icon: '🗓', path: '/student/timetable' },
+        { label: 'Dashboard',    icon: '⊞', path: '/student/dashboard' },
+        { label: 'My courses',   icon: '📚', path: '/student/courses' },
+        { label: 'Assignments',  icon: '📝', path: '/assignments' },
+        { label: 'Attendance',   icon: '✅', path: '/student/attendance' },
+        { label: 'Grades',       icon: '📊', path: '/student/grades' },
+        { label: 'Timetable',    icon: '🗓', path: '/student/timetable' },
     ],
     teacher: [
-        { label: 'Dashboard', icon: '⊞', path: '/teacher/dashboard' },
-        { label: 'My Classes', icon: '🎓', path: '/teacher/classes' },
-        { label: 'Attendance', icon: '✅', path: '/teacher/attendance' },
-        { label: 'Assignments', icon: '📝', path: '/teacher/assignments' },
-        { label: 'Grades', icon: '📊', path: '/teacher/grades' },
+        { label: 'Dashboard',    icon: '⊞', path: '/teacher/dashboard' },
+        { label: 'My classes',   icon: '🎓', path: '/teacher/classes' },
+        { label: 'Lessons',      icon: '📖', path: '/teacher/lessons' },
+        { label: 'Assignments',  icon: '📝', path: '/teacher/assignments' },
+        { label: 'Attendance',   icon: '✅', path: '/teacher/attendance' },
+        { label: 'Grades',       icon: '📊', path: '/teacher/grades' },
     ],
     admin: [
-        { label: 'Dashboard', icon: '⊞', path: '/admin/dashboard' },
-        { label: 'Users', icon: '👥', path: '/admin/users' },
-        { label: 'Courses', icon: '📚', path: '/admin/courses' },
-        { label: 'Fees', icon: '💳', path: '/admin/fees' },
-        { label: 'Reports', icon: '📈', path: '/admin/reports' },
+        { label: 'Dashboard',    icon: '⊞', path: '/admin/dashboard' },
+        { label: 'Users',        icon: '👥', path: '/admin/users' },
+        { label: 'Courses',      icon: '📚', path: '/admin/courses' },
+        { label: 'Fees',         icon: '💳', path: '/admin/fees' },
+        { label: 'Reports',      icon: '📈', path: '/admin/reports' },
     ],
 };
 

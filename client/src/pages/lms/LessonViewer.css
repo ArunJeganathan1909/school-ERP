@@ -1,0 +1,109 @@
+.lesson-layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    height: calc(100vh - 64px);
+    overflow: hidden;
+}
+
+.lesson-sidebar {
+    border-right: 1px solid var(--color-border);
+    overflow-y: auto;
+    padding: var(--space-md);
+    background: var(--color-bg);
+}
+
+.lesson-sidebar__title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--color-text-muted);
+    padding: var(--space-xs) var(--space-sm);
+    margin-bottom: var(--space-sm);
+}
+
+.lesson-sidebar__item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    width: 100%;
+    padding: 10px var(--space-sm);
+    border-radius: var(--radius-md);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+    transition: background var(--transition-fast), color var(--transition-fast);
+    margin-bottom: 2px;
+}
+
+.lesson-sidebar__item:hover {
+    background: var(--color-border);
+    color: var(--color-text-primary);
+}
+
+.lesson-sidebar__item.active {
+    background: var(--color-primary-light);
+    color: var(--color-primary);
+    font-weight: 500;
+}
+
+.lesson-sidebar__icon { flex-shrink: 0; font-size: 1rem; }
+
+.lesson-sidebar__name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.lesson-sidebar__draft {
+    font-size: 0.65rem;
+    background: #FEF3C7;
+    color: #92400E;
+    padding: 1px 6px;
+    border-radius: var(--radius-full);
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.lesson-content {
+    overflow-y: auto;
+    padding: var(--space-xl);
+}
+
+.lesson-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-lg);
+    padding-bottom: var(--space-lg);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.lesson-body {
+    font-size: 1rem;
+    line-height: 1.8;
+    color: var(--color-text-primary);
+    max-width: 760px;
+}
+
+.lesson-link-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    align-items: flex-start;
+    padding: var(--space-xl);
+    background: var(--color-bg);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+}
+
+@media (max-width: 768px) {
+    .lesson-layout { grid-template-columns: 1fr; }
+    .lesson-sidebar { display: none; }
+}

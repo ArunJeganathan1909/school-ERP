@@ -18,6 +18,13 @@ import CourseDetail from './pages/shared/CourseDetail';
 import ManageCourses from './pages/admin/ManageCourses';
 import MyCourses from './pages/student/MyCourses';
 
+// Phase 4 imports
+import LessonViewer from './pages/lms/LessonViewer';
+import AssignmentList from './pages/lms/AssignmentList';
+import QuizPlayer from './pages/lms/QuizPlayer';
+import LessonManager from './pages/lms/LessonManager';
+import AssignmentManager from './pages/lms/AssignmentManager';
+
 export default function App() {
   const dispatch = useDispatch();
   useEffect(() => {
@@ -39,6 +46,15 @@ export default function App() {
           {/* Phase 3 - Courses (shared: all roles) */}
           <Route path="/courses"     element={<PrivateRoute><div className="app-shell"><div className="main-content" style={{marginLeft:'var(--sidebar-width)'}}><CourseList /></div></div></PrivateRoute>} />
           <Route path="/courses/:id" element={<PrivateRoute><CourseDetail /></PrivateRoute>} />
+
+          {/* Phase 4 — LMS student routes */}
+          <Route path="/lessons/:id"    element={<RoleRoute roles={['student','teacher','admin']}><LessonViewer /></RoleRoute>} />
+          <Route path="/assignments"    element={<RoleRoute roles={['student']}><AssignmentList /></RoleRoute>} />
+          <Route path="/quizzes/:id"    element={<RoleRoute roles={['student']}><QuizPlayer /></RoleRoute>} />
+
+          {/* Phase 4 — LMS teacher routes */}
+          <Route path="/teacher/lessons"     element={<RoleRoute roles={['teacher','admin']}><LessonManager /></RoleRoute>} />
+          <Route path="/teacher/assignments" element={<RoleRoute roles={['teacher','admin']}><AssignmentManager /></RoleRoute>} />
 
           {/* Student */}
           <Route path="/student/courses" element={<RoleRoute roles={['student']}><MyCourses /></RoleRoute>} />
