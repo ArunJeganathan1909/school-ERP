@@ -1,0 +1,67 @@
+.attendance-controls__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--space-md);
+}
+
+.attendance-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-lg);
+    flex-wrap: wrap;
+}
+
+.attendance-summary__item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: var(--radius-full);
+    font-size: 0.8125rem;
+    font-weight: 500;
+}
+
+.attendance-summary__count {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.attendance-summary__label {
+    text-transform: capitalize;
+}
+
+.attendance-summary__actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.attendance-status-row {
+    display: flex;
+    gap: var(--space-xs);
+    flex-wrap: wrap;
+}
+
+.attendance-status-btn {
+    padding: 4px 12px;
+    border-radius: var(--radius-full);
+    font-size: 0.75rem;
+    font-weight: 500;
+    border: 1.5px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-transform: capitalize;
+}
+
+.attendance-status-btn:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.attendance-status-btn.active {
+    font-weight: 600;
+}

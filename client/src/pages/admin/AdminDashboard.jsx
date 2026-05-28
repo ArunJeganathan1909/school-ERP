@@ -1,16 +1,45 @@
+import { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import Sidebar from '../../components/Sidebar';
+import api from '../../api/axios';
 import './AdminDashboard.css';
-
-const stats = [
-    { label: 'Total Students', value: '—', sub: 'Registered', icon: '👨‍🎓', color: '#EEF2FF', iconColor: '#4F46E5' },
-    { label: 'Teachers', value: '—', sub: 'Active', icon: '👩‍🏫', color: '#F5F3FF', iconColor: '#7C3AED' },
-    { label: 'Active Courses', value: '—', sub: 'This semester', icon: '📚', color: '#F0FDFA', iconColor: '#0F766E' },
-    { label: 'Fees Pending', value: '—', sub: 'Unpaid invoices', icon: '💳', color: '#FFFBEB', iconColor: '#D97706' },
-];
 
 export default function AdminDashboard() {
     const { user } = useSelector((s) => s.auth);
+
+    const [dashStats, setDashStats] = useState({
+        students: '—',
+        teachers: '—',
+        courses: '—',
+        feePending: '—',
+    });
+
+    useEffect(() => {
+        Promise.all([
+            api.get('/users?role=student&limit=1'),
+            api.get('/users?role=teacher&limit=1'),
+            api.get('/courses?status=active&limit=1'),
+            api.get('/fees?status=overdue&limit=1'),
+        ])
+            .then(([s, t, c, f]) => {
+                setDashStats({
+                    students: s.data.total,
+                    teachers: t.data.total,
+                    courses: c.data.total,
+                    feePending: f.data.total,
+                });
+            })
+            .catch((err) => {
+                console.error('Failed to load dashboard stats:', err);
+            });
+    }, []);
+
+    const stats = [
+        { label: 'Total Students', value: dashStats.students,   sub: 'Registered',      icon: '👨‍🎓', color: '#EEF2FF', iconColor: '#4F46E5' },
+        { label: 'Teachers',       value: dashStats.teachers,   sub: 'Active',           icon: '👩‍🏫', color: '#F5F3FF', iconColor: '#7C3AED' },
+        { label: 'Active Courses', value: dashStats.courses,    sub: 'This semester',    icon: '📚',  color: '#F0FDFA', iconColor: '#0F766E' },
+        { label: 'Fees Pending',   value: dashStats.feePending, sub: 'Unpaid invoices',  icon: '💳',  color: '#FFFBEB', iconColor: '#D97706' },
+    ];
 
     return (
         <div className="app-shell">
@@ -32,7 +61,10 @@ export default function AdminDashboard() {
                     <div className="stats-grid">
                         {stats.map((s) => (
                             <div className="stat-card" key={s.label}>
-                                <div className="stat-card__icon" style={{ background: s.color, color: s.iconColor }}>
+                                <div
+                                    className="stat-card__icon"
+                                    style={{ background: s.color, color: s.iconColor }}
+                                >
                                     {s.icon}
                                 </div>
                                 <div className="stat-card__value">{s.value}</div>
@@ -53,6 +85,7 @@ export default function AdminDashboard() {
                                 <p>No recent registrations.</p>
                             </div>
                         </div>
+
                         <div className="card">
                             <div className="card-header">
                                 <span className="card-title">Quick Actions</span>

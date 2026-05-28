@@ -1,0 +1,81 @@
+.fee-due-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #FEF2F2;
+    border: 1px solid #FECACA;
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    margin-bottom: var(--space-xl);
+}
+
+.fee-cards {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+}
+
+.fee-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: var(--space-md);
+    gap: var(--space-md);
+}
+
+.fee-card__title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.fee-card__meta {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    margin-top: 2px;
+    text-transform: capitalize;
+}
+
+.fee-card__progress-bar {
+    height: 6px;
+    background: var(--color-border);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    margin-bottom: var(--space-md);
+}
+
+.fee-card__progress-fill {
+    height: 100%;
+    border-radius: var(--radius-full);
+    transition: width var(--transition-base);
+}
+
+.fee-card__amounts {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-md);
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--color-border);
+    margin-bottom: var(--space-md);
+}
+
+.fee-card__payments {
+    border-top: 1px solid var(--color-border);
+    padding-top: var(--space-md);
+}
+
+.fee-payment-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    padding: var(--space-xs) 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.fee-payment-row:last-child { border-bottom: none; }
+
+@media (max-width: 600px) {
+    .fee-card__amounts { grid-template-columns: repeat(2, 1fr); }
+}

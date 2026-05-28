@@ -25,6 +25,12 @@ import QuizPlayer from './pages/lms/QuizPlayer';
 import LessonManager from './pages/lms/LessonManager';
 import AssignmentManager from './pages/lms/AssignmentManager';
 
+// Phase 5
+import MarkAttendance from './pages/attendance/MarkAttendance';
+import MyAttendance   from './pages/attendance/MyAttendance';
+import ManageFees     from './pages/fees/ManageFees';
+import MyFees         from './pages/fees/MyFees';
+
 export default function App() {
   const dispatch = useDispatch();
   useEffect(() => {
@@ -55,6 +61,14 @@ export default function App() {
           {/* Phase 4 — LMS teacher routes */}
           <Route path="/teacher/lessons"     element={<RoleRoute roles={['teacher','admin']}><LessonManager /></RoleRoute>} />
           <Route path="/teacher/assignments" element={<RoleRoute roles={['teacher','admin']}><AssignmentManager /></RoleRoute>} />
+
+          {/* Phase 5 — Attendance */}
+          <Route path="/student/attendance" element={<RoleRoute roles={['student']}><MyAttendance /></RoleRoute>} />
+          <Route path="/teacher/attendance" element={<RoleRoute roles={['teacher','admin']}><MarkAttendance /></RoleRoute>} />
+
+          {/* Phase 5 — Fees */}
+          <Route path="/student/fees" element={<RoleRoute roles={['student']}><MyFees /></RoleRoute>} />
+          <Route path="/admin/fees"   element={<RoleRoute roles={['admin']}><ManageFees /></RoleRoute>} />
 
           {/* Student */}
           <Route path="/student/courses" element={<RoleRoute roles={['student']}><MyCourses /></RoleRoute>} />

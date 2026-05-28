@@ -36,6 +36,8 @@ app.use('/api/lessons', require('./routes/lessonRoutes'));
 app.use('/api/assignments', require('./routes/assignmentRoutes'));
 app.use('/api/submissions', require('./routes/submissionRoutes'));
 app.use('/api/quizzes', require('./routes/quizRoutes'));
+app.use('/api/attendances', require('./routes/attendanceRoutes'));
+app.use('/api/fee', require('./routes/feeRoutes'));
 
 // Health check
 app.get('/', (req, res) =>

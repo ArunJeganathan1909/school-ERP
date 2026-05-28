@@ -5,6 +5,9 @@ import enrollmentReducer from "./slices/enrollmentSlice";
 import lessonReducer from './slices/lessonSlice';
 import assignmentReducer from "./slices/assignmentSlice";
 import quizReducer from "./slices/quizSlice";
+import attendanceReducer from "./slices/attendanceSlice" ;
+import feeReducer from "./slices/feeSlice";
+
 
 export const store = configureStore({
     reducer: {
@@ -14,5 +17,7 @@ export const store = configureStore({
         lessons: lessonReducer,
         assignments: assignmentReducer,
         quizzes: quizReducer,
+        attendance: attendanceReducer,
+        fees: feeReducer,
     },
 });

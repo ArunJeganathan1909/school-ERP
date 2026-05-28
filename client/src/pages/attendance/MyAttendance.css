@@ -1,0 +1,79 @@
+.attendance-overview {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xl);
+    margin-bottom: var(--space-xl);
+    flex-wrap: wrap;
+}
+
+.attendance-overview__circle {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    border: 6px solid;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: border-color var(--transition-base), color var(--transition-base);
+}
+
+.attendance-overview__pct {
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.attendance-overview__label {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    margin-top: 2px;
+}
+
+.attendance-overview__stats {
+    display: flex;
+    gap: var(--space-xl);
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.attendance-overview__stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.subject-attendance-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--space-lg);
+    margin-bottom: var(--space-xl);
+}
+
+.subject-attendance-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: var(--space-sm);
+}
+
+.subject-attendance-bar {
+    height: 6px;
+    background: var(--color-border);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    margin-bottom: var(--space-sm);
+}
+
+.subject-attendance-bar__fill {
+    height: 100%;
+    border-radius: var(--radius-full);
+    transition: width var(--transition-base);
+}
+
+.subject-attendance-card__counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+}
