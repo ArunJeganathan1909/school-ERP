@@ -31,6 +31,9 @@ import MyAttendance   from './pages/attendance/MyAttendance';
 import ManageFees     from './pages/fees/ManageFees';
 import MyFees         from './pages/fees/MyFees';
 
+// Phase 6
+import Announcements from './pages/announcements/Announcements';
+
 export default function App() {
   const dispatch = useDispatch();
   useEffect(() => {
@@ -69,6 +72,10 @@ export default function App() {
           {/* Phase 5 — Fees */}
           <Route path="/student/fees" element={<RoleRoute roles={['student']}><MyFees /></RoleRoute>} />
           <Route path="/admin/fees"   element={<RoleRoute roles={['admin']}><ManageFees /></RoleRoute>} />
+
+          {/* Phase 6 */}
+          <Route path="/announcements" element={<PrivateRoute><Announcements /></PrivateRoute>} />
+          <Route path="/announcements/:id" element={<PrivateRoute><Announcements /></PrivateRoute>} />
 
           {/* Student */}
           <Route path="/student/courses" element={<RoleRoute roles={['student']}><MyCourses /></RoleRoute>} />

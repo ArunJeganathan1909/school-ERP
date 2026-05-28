@@ -1,5 +1,6 @@
 const Submission = require('../models/Submission');
 const Assignment = require('../models/Assignment');
+const { notify } = require('../socket/socketHelpers');
 
 // POST /api/submissions — student submits
 exports.submitAssignment = async (req, res) => {
@@ -89,6 +90,14 @@ exports.gradeSubmission = async (req, res) => {
         if (!submission) return res.status(404).json({ success: false, message: 'Submission not found' });
 
         res.status(200).json({ success: true, submission });
+        await notify({
+            recipientId: submission.student._id,
+            type: 'assignment_graded',
+            title: 'Assignment graded',
+            message: `Your submission for "${submission.assignment?.title || 'an assignment'}" has been graded.`,
+            link: '/assignments',
+        });
+        
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }

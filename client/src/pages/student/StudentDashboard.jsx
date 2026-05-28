@@ -1,5 +1,6 @@
 import { useSelector } from 'react-redux';
 import Sidebar from '../../components/Sidebar';
+import NotificationBell from "../../components/NotificationBell";
 import './StudentDashboard.css';
 
 const stats = [
@@ -19,6 +20,7 @@ export default function StudentDashboard() {
                 <div className="topbar">
                     <h1 className="topbar__title">Dashboard</h1>
                     <div className="topbar__right">
+                        <NotificationBell />
                         <span className="badge badge-student">Student</span>
                     </div>
                 </div>

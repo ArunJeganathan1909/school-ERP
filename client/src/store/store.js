@@ -7,7 +7,8 @@ import assignmentReducer from "./slices/assignmentSlice";
 import quizReducer from "./slices/quizSlice";
 import attendanceReducer from "./slices/attendanceSlice" ;
 import feeReducer from "./slices/feeSlice";
-
+import notificationReducer from "./slices/notificationSlice";
+import announcementReducer from "./slices/announcementSlice";
 
 export const store = configureStore({
     reducer: {
@@ -19,5 +20,7 @@ export const store = configureStore({
         quizzes: quizReducer,
         attendance: attendanceReducer,
         fees: feeReducer,
+        notifications: notificationReducer,
+        announcements: announcementReducer,
     },
 });

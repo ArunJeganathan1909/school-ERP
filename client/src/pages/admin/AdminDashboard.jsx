@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import Sidebar from '../../components/Sidebar';
+import NotificationBell from "../../components/NotificationBell";
 import api from '../../api/axios';
 import './AdminDashboard.css';
 
@@ -48,6 +49,7 @@ export default function AdminDashboard() {
                 <div className="topbar">
                     <h1 className="topbar__title">Admin Dashboard</h1>
                     <div className="topbar__right">
+                        <NotificationBell />
                         <span className="badge badge-admin">Admin</span>
                     </div>
                 </div>

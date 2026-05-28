@@ -1,5 +1,6 @@
 const Enrollment = require('../models/Enrollment');
 const Course = require('../models/Course');
+const { notify } = require('../socket/socketHelpers');
 
 // POST /api/enrollments/enroll — student enrolls themselves
 exports.enroll = async (req, res) => {
@@ -38,6 +39,14 @@ exports.enroll = async (req, res) => {
         ]);
 
         res.status(201).json({ success: true, enrollment });
+        await notify({
+            recipientId: req.user._id,
+            type: 'enrollment',
+            title: 'Enrollment confirmed',
+            message: `You have successfully enrolled in "${course.title}".`,
+            link: `/courses/${course._id}`,
+        });
+        
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }

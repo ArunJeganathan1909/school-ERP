@@ -1,4 +1,5 @@
 const Fee = require('../models/Fee');
+const { notify } = require('../socket/socketHelpers');
 
 // GET /api/fees - admin: all fees with filters
 exports.getAllFees = async () => {
@@ -230,7 +231,14 @@ exports.recordPayment = async (req, res) => {
         res.status(200).json({
             success: true,
             fee
-        })
+        });
+        await notify({
+            recipientId: fee.student._id,
+            type: 'fee_paid',
+            title: 'Payment recorded',
+            message: `A payment of LKR ${amount.toLocaleString()} has been recorded for "${fee.title}".`,
+            link: '/student/fees',
+        });
 
     } catch (error) {
         res.status(500).json({
