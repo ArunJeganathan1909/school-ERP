@@ -1,0 +1,15 @@
+.student-report-grid {
+    display: grid;
+    grid-template-columns: 1fr 2fr 2fr;
+    gap: var(--space-lg);
+    margin-bottom: var(--space-xl);
+}
+
+@media (max-width: 900px) {
+    .student-report-grid { grid-template-columns: 1fr 1fr; }
+    .student-report-grid > *:first-child { grid-column: 1 / -1; }
+}
+
+@media (max-width: 600px) {
+    .student-report-grid { grid-template-columns: 1fr; }
+}

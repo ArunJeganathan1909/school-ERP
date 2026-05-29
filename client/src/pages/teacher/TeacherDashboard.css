@@ -1,12 +1,57 @@
-.teacher-welcome {
-    margin-bottom: var(--space-xl);
+.teacher-submission-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
-.teacher-welcome h2 {
-    font-size: 1.5rem;
+
+.teacher-submission-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-md);
+    transition: background var(--transition-fast);
+}
+
+.teacher-submission-item:hover {
+    background: var(--color-bg);
+}
+
+.teacher-submission-item__avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--color-primary-light);
+    color: var(--color-primary);
     font-weight: 700;
-    margin-bottom: var(--space-xs);
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
 }
-.teacher-welcome p {
-    color: var(--color-text-secondary);
+
+.teacher-submission-item__info {
+    flex: 1;
+    min-width: 0;
+}
+
+.teacher-submission-item__student {
     font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
+
+.teacher-submission-item__assignment {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Reuse .dashboard-welcome and .quick-link-btn from StudentDashboard.css */
+/* Import it in index.css or copy the rules here */

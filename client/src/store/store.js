@@ -9,6 +9,7 @@ import attendanceReducer from "./slices/attendanceSlice" ;
 import feeReducer from "./slices/feeSlice";
 import notificationReducer from "./slices/notificationSlice";
 import announcementReducer from "./slices/announcementSlice";
+import reportReducer from "./slices/reportSlice";
 
 export const store = configureStore({
     reducer: {
@@ -22,5 +23,6 @@ export const store = configureStore({
         fees: feeReducer,
         notifications: notificationReducer,
         announcements: announcementReducer,
+        reports: reportReducer,
     },
 });

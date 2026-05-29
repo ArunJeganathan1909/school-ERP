@@ -1,0 +1,10 @@
+.teacher-report-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: var(--space-lg);
+    margin-bottom: var(--space-xl);
+}
+
+@media (max-width: 800px) {
+    .teacher-report-grid { grid-template-columns: 1fr; }
+}

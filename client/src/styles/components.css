@@ -308,3 +308,79 @@
 @media (max-width: 480px) {
     .form-row { grid-template-columns: 1fr; }
 }
+
+/* ── Dashboard welcome banner (shared) ── */
+.dashboard-welcome {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-lg);
+    margin-bottom: var(--space-xl);
+    flex-wrap: wrap;
+}
+
+.dashboard-welcome__text h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-xs);
+}
+
+.dashboard-welcome__text p {
+    font-size: 0.9375rem;
+    color: var(--color-text-secondary);
+}
+
+/* ── Quick link buttons (shared) ── */
+.quick-links {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.quick-link-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-sm) var(--space-sm);
+    border-radius: var(--radius-md);
+    background: none;
+    border: none;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    transition: background var(--transition-fast);
+    font-family: inherit;
+}
+
+.quick-link-btn:hover {
+    background: var(--color-bg);
+}
+
+.quick-link-btn__icon {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.quick-link-btn__label {
+    flex: 1;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text-primary);
+}
+
+.quick-link-btn__arrow {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    transition: transform var(--transition-fast);
+}
+
+.quick-link-btn:hover .quick-link-btn__arrow {
+    transform: translateX(3px);
+}
