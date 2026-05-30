@@ -65,8 +65,8 @@ export default function ManageCourses() {
                                     <th>Code</th>
                                     <th>Title</th>
                                     <th>Department</th>
-                                    <th>Teacher</th>
                                     <th>Enrolled</th>
+                                    <th>Duration</th>
                                     <th>Status</th>
                                     <th>Actions</th>
                                 </tr>
@@ -74,29 +74,54 @@ export default function ManageCourses() {
                                 <tbody>
                                 {courses.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} style={{ textAlign: 'center', padding: 'var(--space-2xl)', color: 'var(--color-text-muted)' }}>
+                                        <td
+                                            colSpan={7}
+                                            style={{
+                                                textAlign: 'center',
+                                                padding: 'var(--space-2xl)',
+                                                color: 'var(--color-text-muted)',
+                                            }}
+                                        >
                                             No courses yet. Add your first course.
                                         </td>
                                     </tr>
                                 ) : courses.map((course) => (
                                     <tr key={course._id}>
                                         <td>
-                        <span style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary)', fontWeight: 700, fontSize: '0.75rem', padding: '2px 8px', borderRadius: 'var(--radius-full)' }}>
-                          {course.code}
-                        </span>
+          <span style={{
+              background: 'var(--color-primary-light)',
+              color: 'var(--color-primary)',
+              fontWeight: 700,
+              fontSize: '0.75rem',
+              padding: '2px 8px',
+              borderRadius: 'var(--radius-full)',
+          }}>
+            {course.code}
+          </span>
                                         </td>
                                         <td style={{ fontWeight: 500 }}>{course.title}</td>
-                                        <td style={{ color: 'var(--color-text-secondary)' }}>{course.department}</td>
-                                        <td style={{ color: 'var(--color-text-secondary)' }}>{course.teacher?.name || '—'}</td>
-                                        <td style={{ color: 'var(--color-text-secondary)' }}>{course.enrolledCount ?? 0} / {course.maxStudents}</td>
+                                        <td style={{ color: 'var(--color-text-secondary)' }}>
+                                            {course.department}
+                                        </td>
+                                        <td style={{ color: 'var(--color-text-secondary)' }}>
+                                            {course.enrolledCount ?? 0} / {course.maxStudents}
+                                        </td>
+                                        <td style={{ color: 'var(--color-text-secondary)' }}>
+                                            {course.duration || '—'}
+                                        </td>
                                         <td>
-                        <span className={`badge badge-${course.status === 'active' ? 'success' : 'error'}`}>
-                          {course.status}
-                        </span>
+          <span className={`badge badge-${course.status === 'active' ? 'success' : 'error'}`}>
+            {course.status}
+          </span>
                                         </td>
                                         <td>
                                             <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
-                                                <button className="btn btn-outline btn-sm" onClick={() => handleEdit(course)}>Edit</button>
+                                                <button
+                                                    className="btn btn-outline btn-sm"
+                                                    onClick={() => handleEdit(course)}
+                                                >
+                                                    Edit
+                                                </button>
                                                 <button
                                                     className="btn btn-danger btn-sm"
                                                     onClick={() => handleDelete(course._id, course.title)}

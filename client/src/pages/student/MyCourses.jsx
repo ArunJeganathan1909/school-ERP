@@ -65,11 +65,13 @@ export default function MyCourses() {
                                         <h3 className="course-card__title">{course.title}</h3>
                                         <p className="course-card__dept">{course.department}</p>
                                         <div className="course-card__footer">
-                                            <span className="course-card__meta">👤 {course.teacher?.name || '—'}</span>
+                                          <span className="course-card__meta">
+                                            ⏱ {course.duration || 'Flexible'}
+                                          </span>
                                             {enrollment.grade && (
                                                 <span style={{ fontWeight: 700, color: 'var(--color-primary)' }}>
-                          Grade: {enrollment.grade}
-                        </span>
+                                                  Grade: {enrollment.grade}
+                                                </span>
                                             )}
                                         </div>
                                     </div>

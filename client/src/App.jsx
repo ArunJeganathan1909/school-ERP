@@ -41,6 +41,7 @@ import TeacherReport  from './pages/reports/TeacherReport';
 
 import ManageUsers from "./pages/admin/ManageUsers.jsx";
 import LandingPage from "./pages/landing/LandingPage.jsx";
+import ManageSubjects from "./pages/admin/ManageSubjects";
 
 export default function App() {
   const dispatch = useDispatch();
@@ -96,6 +97,11 @@ export default function App() {
           {/* Admin */}
           <Route path="/admin/courses" element={<RoleRoute roles={['admin']}><ManageCourses /></RoleRoute>} />
           <Route path="/admin/users" element={<RoleRoute roles={['admin']}><ManageUsers /></RoleRoute> } />
+
+          <Route
+              path="/admin/subjects"
+              element={<RoleRoute roles={['admin', 'teacher']} ><ManageSubjects /></RoleRoute>}
+          />
 
           <Route path="/unauthorized" element={
             <div className="min-h-screen" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'var(--color-text-secondary)' }}>

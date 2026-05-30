@@ -25,7 +25,6 @@ exports.getAllCourses = async (req, res) => {
 
         const [courses, total] = await Promise.all([
             Course.find(filter)
-                .populate('teacher', 'name email')
                 .populate('enrolledCount')
                 .skip(skip)
                 .limit(Number(limit))
@@ -50,7 +49,6 @@ exports.getAllCourses = async (req, res) => {
 exports.getCourse = async (req, res) => {
     try {
         const course = await Course.findById(req.params.id)
-            .populate('teacher', 'name email phone profilePhoto')
             .populate('enrolledCount');
 
         if (!course) return res.status(404).json({
@@ -80,11 +78,10 @@ exports.createCourse = async (req, res) => {
         if (existing) return res.status(400).json({ success: false, message: 'Course code already exists' });
 
         const course = await Course.create({
-            title, code, description, department, teacher: teacher || null,
+            title, code, description, department,
             duration, maxStudents, tags,
         });
 
-        const populated = await course.populate('teacher', 'name email');
         res.status(201).json({ success: true, course: populated });
 
     } catch (error) {
@@ -102,7 +99,7 @@ exports.updateCourse = async (req, res) => {
             req.params.id,
             { $set: req.body },
             { new: true, runValidators: true }
-        ).populate('teacher', 'name email');
+        );
 
         if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
 

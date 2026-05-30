@@ -100,9 +100,7 @@ exports.getAdminDashboard = async (req, res) => {
 // ─── ADMIN: per-course analytics ─────────────────────────────────────────────
 exports.getCourseAnalytics = async (req, res) => {
     try {
-        const courses = await Course.find({ status: 'active' })
-            .populate('teacher', 'name')
-            .lean();
+        const courses = await Course.find({ status: 'active' }).lean();
 
         const courseIds = courses.map((c) => c._id);
 
@@ -136,7 +134,6 @@ exports.getCourseAnalytics = async (req, res) => {
             title: c.title,
             code: c.code,
             department: c.department,
-            teacher: c.teacher?.name || 'Unassigned',
             maxStudents: c.maxStudents,
             enrolled: enrollMap[String(c._id)] || 0,
             attendanceRate: attMap[String(c._id)] || 0,

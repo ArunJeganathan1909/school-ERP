@@ -218,7 +218,7 @@ export default function AdminReports() {
                                                     <thead>
                                                     <tr>
                                                         <th>Course</th>
-                                                        <th>Teacher</th>
+                                                        <th>Department</th>
                                                         <th>Enrolled</th>
                                                         <th>Capacity</th>
                                                         <th>Attendance</th>
@@ -231,15 +231,22 @@ export default function AdminReports() {
                                                         <tr key={c._id}>
                                                             <td>
                                                                 <div style={{ fontWeight: 500 }}>{c.title}</div>
-                                                                <div style={{ fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: 600 }}>{c.code}</div>
+                                                                <div style={{ fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: 600 }}>
+                                                                    {c.code}
+                                                                </div>
                                                             </td>
-                                                            <td style={{ color: 'var(--color-text-secondary)' }}>{c.teacher}</td>
+                                                            <td style={{ color: 'var(--color-text-secondary)' }}>{c.department}</td>
                                                             <td style={{ fontWeight: 600 }}>{c.enrolled}</td>
                                                             <td style={{ color: 'var(--color-text-muted)' }}>{c.maxStudents}</td>
                                                             <td>
-                                  <span style={{ fontWeight: 600, color: c.attendanceRate >= 75 ? '#059669' : c.attendanceRate >= 60 ? '#D97706' : '#DC2626' }}>
-                                    {c.attendanceRate}%
-                                  </span>
+          <span style={{
+              fontWeight: 600,
+              color: c.attendanceRate >= 75 ? '#059669'
+                  : c.attendanceRate >= 60 ? '#D97706'
+                      : '#DC2626',
+          }}>
+            {c.attendanceRate}%
+          </span>
                                                             </td>
                                                             <td style={{ color: 'var(--color-text-secondary)' }}>{c.submissions}</td>
                                                             <td style={{ color: 'var(--color-text-secondary)' }}>{c.graded}</td>

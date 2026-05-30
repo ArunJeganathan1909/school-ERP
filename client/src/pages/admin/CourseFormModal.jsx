@@ -1,46 +1,36 @@
 import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { createCourse, updateCourse } from '../../store/slices/courseSlice';
-import api from '../../api/axios';
 
 export default function CourseFormModal({ course, onClose }) {
     const dispatch = useDispatch();
     const { error } = useSelector((s) => s.courses);
-
     const [loading, setLoading] = useState(false);
-    const [teachers, setTeachers] = useState([]);
 
     const [form, setForm] = useState({
-        title: '',
-        code: '',
+        title:       '',
+        code:        '',
         description: '',
-        department: '',
-        duration: '',
+        department:  '',
+        duration:    '',
         maxStudents: 60,
-        status: 'active',
-        teacher: '',
+        status:      'active',
     });
 
+    // Pre-fill when editing
     useEffect(() => {
         if (course) {
             setForm({
-                title: course.title || '',
-                code: course.code || '',
+                title:       course.title       || '',
+                code:        course.code        || '',
                 description: course.description || '',
-                department: course.department || '',
-                duration: course.duration || '',
+                department:  course.department  || '',
+                duration:    course.duration    || '',
                 maxStudents: course.maxStudents || 60,
-                status: course.status || 'active',
-                teacher: course.teacher?._id || course.teacher || '',
+                status:      course.status      || 'active',
             });
         }
     }, [course]);
-
-    useEffect(() => {
-        api.get('/users?role=teacher&limit=100')
-            .then(({ data }) => setTeachers(data.users || []))
-            .catch(() => setTeachers([]));
-    }, []);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -51,20 +41,19 @@ export default function CourseFormModal({ course, onClose }) {
         e.preventDefault();
         setLoading(true);
 
-        const payload = {
-            ...form,
-            teacher: form.teacher || null,
-        };
-
         let result;
         if (course) {
-            result = await dispatch(updateCourse({ id: course._id, data: payload }));
+            result = await dispatch(updateCourse({ id: course._id, data: form }));
         } else {
-            result = await dispatch(createCourse(payload));
+            result = await dispatch(createCourse(form));
         }
 
         setLoading(false);
-        if (createCourse.fulfilled.match(result) || updateCourse.fulfilled.match(result)) {
+
+        if (
+            createCourse.fulfilled.match(result) ||
+            updateCourse.fulfilled.match(result)
+        ) {
             onClose();
         }
     };
@@ -72,9 +61,10 @@ export default function CourseFormModal({ course, onClose }) {
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal" onClick={(e) => e.stopPropagation()}>
+
                 <div className="modal__header">
                     <h2 className="modal__title">
-                        {course ? 'Edit Course' : 'Add Course'}
+                        {course ? 'Edit course' : 'Add course'}
                     </h2>
                     <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
                 </div>
@@ -89,6 +79,8 @@ export default function CourseFormModal({ course, onClose }) {
                 )}
 
                 <form className="modal__body" onSubmit={handleSubmit}>
+
+                    {/* Title + Code */}
                     <div className="form-row">
                         <div className="form-group">
                             <label className="form-label">Course title *</label>
@@ -98,22 +90,24 @@ export default function CourseFormModal({ course, onClose }) {
                                 value={form.title}
                                 onChange={handleChange}
                                 required
-                                placeholder="e.g. Computer Science"
+                                placeholder="e.g. Bachelor of Computer Science"
                             />
                         </div>
                         <div className="form-group">
                             <label className="form-label">Course code *</label>
                             <input
                                 className="form-input"
-                                name="code" value={form.code}
+                                name="code"
+                                value={form.code}
                                 onChange={handleChange}
                                 required
-                                placeholder="e.g. CS101"
+                                placeholder="e.g. BCS101"
                                 style={{ textTransform: 'uppercase' }}
                             />
                         </div>
                     </div>
 
+                    {/* Department + Duration */}
                     <div className="form-row">
                         <div className="form-group">
                             <label className="form-label">Department *</label>
@@ -138,28 +132,7 @@ export default function CourseFormModal({ course, onClose }) {
                         </div>
                     </div>
 
-                    <div className="form-group">
-                        <label className="form-label">Assign teacher</label>
-                        <select
-                            className="form-input"
-                            name="teacher"
-                            value={form.teacher}
-                            onChange={handleChange}
-                        >
-                            <option value="">- No teacher assigned -</option>
-                            {teachers.map((t) => (
-                                <option key={t._id} value={t._id}>
-                                    {t.name} ({t.email})
-                                </option>
-                            ))}
-                        </select>
-                        {teachers.length === 0 && (
-                            <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-                                No teachers found. Register teacher accounts first.
-                            </p>
-                        )}
-                    </div>
-
+                    {/* Max students + Status */}
                     <div className="form-row">
                         <div className="form-group">
                             <label className="form-label">Max students</label>
@@ -188,6 +161,7 @@ export default function CourseFormModal({ course, onClose }) {
                         </div>
                     </div>
 
+                    {/* Description */}
                     <div className="form-group">
                         <label className="form-label">Description</label>
                         <textarea
@@ -201,12 +175,45 @@ export default function CourseFormModal({ course, onClose }) {
                         />
                     </div>
 
+                    {/* Info note */}
+                    <div style={{
+                        background: '#EFF6FF',
+                        border: '1px solid #BFDBFE',
+                        borderRadius: 'var(--radius-md)',
+                        padding: 'var(--space-md)',
+                        fontSize: '0.875rem',
+                        color: '#2563EB',
+                        display: 'flex',
+                        gap: 'var(--space-sm)',
+                        alignItems: 'flex-start',
+                    }}>
+                        <span style={{ flexShrink: 0 }}>ℹ</span>
+                        <span>
+              Teachers are assigned per subject, not per course.
+              Go to <strong>Subjects</strong> to assign teachers to individual subjects.
+            </span>
+                    </div>
+
                     <div className="modal__footer">
-                        <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-                        <button type="submit" className="btn btn-primary" disabled={loading}>
-                            {loading ? <><span className="spinner"></span> Saving…</> : course ? 'Update Course' : 'Create Course'}
+                        <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={onClose}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            className="btn btn-primary"
+                            disabled={loading}
+                        >
+                            {loading
+                                ? <><span className="spinner"></span> Saving…</>
+                                : course ? 'Update course' : 'Create course'
+                            }
                         </button>
                     </div>
+
                 </form>
             </div>
         </div>

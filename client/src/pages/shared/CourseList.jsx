@@ -120,7 +120,7 @@ export default function CourseList() {
 
 function CourseCard({ course, onClick }) {
     const statusColors = {
-        active: { bg: '#ECFDF5', color: '#059669' },
+        active:   { bg: '#ECFDF5', color: '#059669' },
         inactive: { bg: '#F9FAFB', color: '#6B7280' },
         archived: { bg: '#FEF2F2', color: '#DC2626' },
     };
@@ -130,18 +130,27 @@ function CourseCard({ course, onClick }) {
         <div className="course-card" onClick={onClick}>
             <div className="course-card__top">
                 <div className="course-card__code">{course.code}</div>
-                <span className="course-card__status" style={{ background: sc.bg, color: sc.color }}>
+                <span
+                    className="course-card__status"
+                    style={{ background: sc.bg, color: sc.color }}
+                >
           {course.status}
         </span>
             </div>
+
             <h3 className="course-card__title">{course.title}</h3>
             <p className="course-card__dept">{course.department}</p>
+
             {course.description && (
-                <p className="course-card__desc">{course.description.slice(0, 90)}{course.description.length > 90 ? '…' : ''}</p>
+                <p className="course-card__desc">
+                    {course.description.slice(0, 90)}
+                    {course.description.length > 90 ? '…' : ''}
+                </p>
             )}
+
             <div className="course-card__footer">
         <span className="course-card__meta">
-          👤 {course.teacher?.name || 'Unassigned'}
+          ⏱ {course.duration || 'Flexible'}
         </span>
                 <span className="course-card__meta">
           🎓 {course.enrolledCount ?? 0} / {course.maxStudents}

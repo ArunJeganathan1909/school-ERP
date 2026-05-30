@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchCourse } from '../../store/slices/courseSlice';
 import { enrollCourse } from '../../store/slices/enrollmentSlice';
 import Sidebar from '../../components/Sidebar';
+import api from '../../api/axios';
 
 export default function CourseDetail() {
     const { id } = useParams();
@@ -13,6 +14,9 @@ export default function CourseDetail() {
     const { list: enrollments, error: enrollError } = useSelector((s) => s.enrollments);
     const { user } = useSelector((s) => s.auth);
 
+    const [subjects,         setSubjects]         = useState([]);
+    const [subjectsLoading,  setSubjectsLoading]  = useState(false);
+
     const isEnrolled = enrollments.some(
         (e) => e.course?._id === id && e.status === 'active'
     );
@@ -21,6 +25,16 @@ export default function CourseDetail() {
         dispatch(fetchCourse(id));
     }, [dispatch, id]);
 
+    // Load subjects for this course
+    useEffect(() => {
+        if (!id) return;
+        setSubjectsLoading(true);
+        api.get(`/subjects?course=${id}`)
+            .then(({ data }) => setSubjects(data.subjects || []))
+            .catch(() => setSubjects([]))
+            .finally(() => setSubjectsLoading(false));
+    }, [id]);
+
     const handleEnroll = async () => {
         const result = await dispatch(enrollCourse(id));
         if (enrollCourse.fulfilled.match(result)) {
@@ -28,11 +42,20 @@ export default function CourseDetail() {
         }
     };
 
+    const DAY_COLORS = {
+        Monday: '#EEF2FF', Tuesday: '#F5F3FF', Wednesday: '#ECFDF5',
+        Thursday: '#FFF7ED', Friday: '#FEF2F2', Saturday: '#F0F9FF',
+    };
+    const DAY_TEXT = {
+        Monday: '#4F46E5', Tuesday: '#7C3AED', Wednesday: '#059669',
+        Thursday: '#EA580C', Friday: '#DC2626', Saturday: '#0284C7',
+    };
+
     if (loading) return (
         <div className="app-shell">
             <Sidebar />
             <div className="main-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div className="spinner" style={{ borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5', width: 32, height: 32, borderWidth: 3 }}></div>
+                <div className="spinner" style={{ width: 36, height: 36, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }}></div>
             </div>
         </div>
     );
@@ -63,19 +86,27 @@ export default function CourseDetail() {
                     {course.status}
                   </span>
                                 </div>
-                                <h2 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: 'var(--space-xs)' }}>{course.title}</h2>
+                                <h2 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: 'var(--space-xs)' }}>
+                                    {course.title}
+                                </h2>
                                 <p style={{ color: 'var(--color-text-secondary)' }}>{course.department}</p>
                             </div>
 
                             {user?.role === 'student' && course.status === 'active' && (
                                 <div style={{ textAlign: 'right' }}>
                                     {isEnrolled ? (
-                                        <div className="alert alert-success" style={{ display: 'inline-flex' }}>✓ Enrolled</div>
+                                        <div className="alert alert-success" style={{ display: 'inline-flex' }}>
+                                            ✓ Enrolled
+                                        </div>
                                     ) : (
                                         <>
-                                            {enrollError && <p style={{ color: 'var(--color-error)', fontSize: '0.875rem', marginBottom: 'var(--space-sm)' }}>{enrollError}</p>}
+                                            {enrollError && (
+                                                <p style={{ color: 'var(--color-error)', fontSize: '0.875rem', marginBottom: 'var(--space-sm)' }}>
+                                                    {enrollError}
+                                                </p>
+                                            )}
                                             <button className="btn btn-primary" onClick={handleEnroll}>
-                                                Enroll Now
+                                                Enroll now
                                             </button>
                                         </>
                                     )}
@@ -89,31 +120,126 @@ export default function CourseDetail() {
                             </p>
                         )}
 
-                        {/* Meta info grid */}
+                        {/* Meta info */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--space-md)', marginTop: 'var(--space-lg)', paddingTop: 'var(--space-lg)', borderTop: '1px solid var(--color-border)' }}>
                             {[
-                                { label: 'Instructor', value: course.teacher?.name || 'Unassigned' },
-                                { label: 'Duration', value: course.duration || '—' },
-                                { label: 'Enrolled', value: `${course.enrolledCount ?? 0} / ${course.maxStudents}` },
+                                { label: 'Department', value: course.department },
+                                { label: 'Duration',   value: course.duration || '—' },
+                                { label: 'Enrolled',   value: `${course.enrolledCount ?? 0} / ${course.maxStudents}` },
+                                { label: 'Subjects',   value: subjects.length },
                             ].map((item) => (
                                 <div key={item.label}>
-                                    <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>{item.label}</p>
+                                    <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
+                                        {item.label}
+                                    </p>
                                     <p style={{ fontSize: '0.9375rem', fontWeight: 600 }}>{item.value}</p>
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    {/* Subjects — fetched separately in Phase 4 LMS */}
+                    {/* Subjects */}
                     <div className="card">
                         <div className="card-header">
-                            <span className="card-title">Subjects</span>
+                            <span className="card-title">Subjects ({subjects.length})</span>
+                            {user?.role === 'admin' && (
+                                <button
+                                    className="btn btn-outline btn-sm"
+                                    onClick={() => navigate('/admin/subjects')}
+                                >
+                                    Manage subjects →
+                                </button>
+                            )}
                         </div>
-                        <div className="empty-state">
-                            <div className="empty-state__icon">📖</div>
-                            <p>Subjects will appear here.</p>
-                            <p>Full subject listing arrives in Phase 4 (LMS).</p>
-                        </div>
+
+                        {subjectsLoading ? (
+                            <div className="empty-state" style={{ padding: 'var(--space-xl)' }}>
+                                <div className="spinner" style={{ borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} />
+                            </div>
+                        ) : subjects.length === 0 ? (
+                            <div className="empty-state">
+                                <div className="empty-state__icon">📖</div>
+                                <p>No subjects added to this course yet.</p>
+                                {user?.role === 'admin' && (
+                                    <button
+                                        className="btn btn-primary"
+                                        style={{ marginTop: 'var(--space-md)' }}
+                                        onClick={() => navigate('/admin/subjects')}
+                                    >
+                                        Add subjects
+                                    </button>
+                                )}
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+                                {subjects.map((subject) => (
+                                    <div
+                                        key={subject._id}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'flex-start',
+                                            gap: 'var(--space-md)',
+                                            padding: 'var(--space-md)',
+                                            border: '1px solid var(--color-border)',
+                                            borderRadius: 'var(--radius-md)',
+                                            transition: 'background var(--transition-fast)',
+                                        }}
+                                    >
+                                        {/* Left: code + name */}
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', marginBottom: 4, flexWrap: 'wrap' }}>
+                        <span style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary)', fontWeight: 700, fontSize: '0.7rem', padding: '1px 8px', borderRadius: 'var(--radius-full)' }}>
+                          {subject.code}
+                        </span>
+                                                <span style={{ background: subject.isElective ? '#F5F3FF' : '#ECFDF5', color: subject.isElective ? '#7C3AED' : '#059669', fontSize: '0.7rem', fontWeight: 600, padding: '1px 6px', borderRadius: 'var(--radius-full)' }}>
+                          {subject.isElective ? 'Elective' : 'Core'}
+                        </span>
+                                                <span style={{ background: '#FFF7ED', color: '#EA580C', fontSize: '0.7rem', fontWeight: 600, padding: '1px 6px', borderRadius: 'var(--radius-full)' }}>
+                          Sem {subject.semester}
+                        </span>
+                                            </div>
+                                            <div style={{ fontWeight: 600, fontSize: '0.9375rem', marginBottom: 2 }}>
+                                                {subject.name}
+                                            </div>
+                                            {subject.description && (
+                                                <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                                                    {subject.description.slice(0, 80)}{subject.description.length > 80 ? '…' : ''}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Middle: teacher + credits */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0, fontSize: '0.8125rem', color: 'var(--color-text-secondary)', minWidth: 140 }}>
+                                            <span>👤 {subject.teacher?.name || 'Unassigned'}</span>
+                                            <span>🎓 {subject.credits} credits</span>
+                                        </div>
+
+                                        {/* Right: schedule pills */}
+                                        {subject.schedule?.length > 0 && (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+                                                {subject.schedule.map((slot, idx) => (
+                                                    <span
+                                                        key={idx}
+                                                        style={{
+                                                            fontSize: '0.7rem',
+                                                            fontWeight: 600,
+                                                            padding: '2px 8px',
+                                                            borderRadius: 'var(--radius-full)',
+                                                            background: DAY_COLORS[slot.day] || '#F3F4F6',
+                                                            color: DAY_TEXT[slot.day] || '#374151',
+                                                            whiteSpace: 'nowrap',
+                                                        }}
+                                                    >
+                            {slot.day.slice(0, 3)} {slot.startTime}
+                                                        {slot.room ? ` · ${slot.room}` : ''}
+                          </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
