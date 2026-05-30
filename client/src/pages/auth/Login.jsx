@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { loginUser } from '../../store/slices/authSlice';
 import './Login.css';
 
 export default function Login() {
     const dispatch = useDispatch();
     const navigate = useNavigate();
-    const { loading, error } = useSelector((s) => s.auth);
+    const { loading, error, token, user } = useSelector((s) => s.auth);
     const [form, setForm] = useState({ email: '', password: '' });
+
+    // If already logged in, redirect to their dashboard
+    if (token && user) return <Navigate to={`/${user.role}/dashboard`} replace />;
 
     const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 

@@ -39,6 +39,9 @@ import AdminReports   from './pages/reports/AdminReports';
 import StudentReport  from './pages/reports/StudentReport';
 import TeacherReport  from './pages/reports/TeacherReport';
 
+import ManageUsers from "./pages/admin/ManageUsers.jsx";
+import LandingPage from "./pages/landing/LandingPage.jsx";
+
 export default function App() {
   const dispatch = useDispatch();
   useEffect(() => {
@@ -48,7 +51,7 @@ export default function App() {
   return (
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
@@ -92,6 +95,7 @@ export default function App() {
 
           {/* Admin */}
           <Route path="/admin/courses" element={<RoleRoute roles={['admin']}><ManageCourses /></RoleRoute>} />
+          <Route path="/admin/users" element={<RoleRoute roles={['admin']}><ManageUsers /></RoleRoute> } />
 
           <Route path="/unauthorized" element={
             <div className="min-h-screen" style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'var(--color-text-secondary)' }}>
@@ -99,6 +103,7 @@ export default function App() {
             </div>
           } />
         </Routes>
+
       </BrowserRouter>
   );
 }
