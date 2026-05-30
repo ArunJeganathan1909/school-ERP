@@ -4,12 +4,22 @@ const Enrollment = require('../models/Enrollment');
 // GET /api/courses
 exports.getAllCourses = async (req, res) => {
     try {
-        const { student, department, search, page = 1, limit = 12 } = req.query;
+        const { status, department, search, page = 1, limit = 12 } = req.query;
 
         const filter = {};
+
         if (status) filter.status = status;
         if (department) filter.department = department;
-        if (search) filter.$text = { $search: search };
+
+        // Use regex search instead of $text to avoid needing a text index
+        if (search && search.trim()) {
+            filter.$or = [
+                { title:       { $regex: search.trim(), $options: 'i' } },
+                { code:        { $regex: search.trim(), $options: 'i' } },
+                { description: { $regex: search.trim(), $options: 'i' } },
+                { department:  { $regex: search.trim(), $options: 'i' } },
+            ];
+        }
 
         const skip = (Number(page) - 1) * Number(limit);
 
@@ -30,12 +40,9 @@ exports.getAllCourses = async (req, res) => {
             pages: Math.ceil(total / Number(limit)),
             courses,
         });
-
-    } catch (error){
-        res.status(500).json({
-            success: false,
-            message: error.message,
-        })
+    } catch (err) {
+        console.error('getAllCourses error:', err);
+        res.status(500).json({ success: false, message: err.message });
     }
 };
 

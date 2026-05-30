@@ -65,6 +65,5 @@ courseSchema.virtual('enrolledCount', {
 courseSchema.index({ code: 1 });
 courseSchema.index({ department: 1 });
 courseSchema.index({ status: 1 });
-courseSchema.index({ title: 'text', description: 'text' });
 
 module.exports = mongoose.model('Course', courseSchema);

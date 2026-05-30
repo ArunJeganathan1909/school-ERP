@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import Sidebar from '../../components/Sidebar';
-import { fetchCourses, deleteCourse } from '../../store/slices/courseSlice';
+import { fetchCourses, deleteCourse, clearCourseError } from '../../store/slices/courseSlice';
 import CourseFormModal from './CourseFormModal';
 import './ManageCourses.css';
 
@@ -13,11 +13,19 @@ export default function ManageCourses() {
     const [deletingId, setDeletingId] = useState(null);
 
     useEffect(() => {
-        dispatch(fetchCourses({ limit: 50 }));
+        dispatch(fetchCourses({ limit: 50, page: 1 }));
     }, [dispatch]);
 
-    const handleEdit = (course) => { setEditCourse(course); setShowModal(true); };
-    const handleAdd = () => { setEditCourse(null); setShowModal(true); };
+    const handleEdit = (course) => {
+        dispatch(clearCourseError());
+        setEditCourse(course);
+        setShowModal(true);
+    };
+    const handleAdd = () => {
+        dispatch(clearCourseError());
+        setEditCourse(null);
+        setShowModal(true);
+    };
 
     const handleDelete = async (id, title) => {
         if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return;
