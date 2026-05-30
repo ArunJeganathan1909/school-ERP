@@ -2,14 +2,14 @@ const Fee = require('../models/Fee');
 const { notify } = require('../socket/socketHelpers');
 
 // GET /api/fees - admin: all fees with filters
-exports.getAllFees = async () => {
+exports.getAllFees = async (req, res) => {
     try {
         const { student, course, status, academicYear, page = 1, limit = 20 } = req.query;
 
         const filter = {};
-        if (student) filter.student = student;
-        if (course) filter.course = course;
-        if (status) filter.status = status;
+        if (student)      filter.student      = student;
+        if (course)       filter.course       = course;
+        if (status && status.trim())       filter.status       = status;   // ← only add if non-empty
         if (academicYear) filter.academicYear = academicYear;
 
         const skip = (Number(page) - 1) * Number(limit);
@@ -17,41 +17,44 @@ exports.getAllFees = async () => {
         const [fees, total] = await Promise.all([
             Fee.find(filter)
                 .populate('student', 'name email profilePhoto')
-                .populate('course', 'title code')
+                .populate('course',  'title code')
                 .skip(skip)
                 .limit(Number(limit))
                 .sort({ dueDate: 1 }),
             Fee.countDocuments(filter),
         ]);
 
-    //     Summary stats
+        // Summary stats
         const stats = await Fee.aggregate([
             { $match: filter },
             {
                 $group: {
-                    _id: null,
-                    totalExpected: { $sum: '$netAmount' },
+                    _id:            null,
+                    totalExpected:  { $sum: '$netAmount'  },
                     totalCollected: { $sum: '$paidAmount' },
                     pending: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
-                    overdue: { $sum: { $cond: [{ $eq: ['$status', 'overdue'] }, 1, 0] } },
-                    paid: { $sum: { $cond: [{ $eq: ['$status', 'paid'] }, 1, 0] } },
-                }
-            }
+                    overdue:  { $sum: { $cond: [{ $eq: ['$status', 'overdue']  }, 1, 0] } },
+                    paid:     { $sum: { $cond: [{ $eq: ['$status', 'paid']     }, 1, 0] } },
+                },
+            },
         ]);
 
         res.status(200).json({
             success: true,
             total,
-            page: Number(page),
-            pages: Math.ceil(total / Nuumber(limit)),
+            page:  Number(page),
+            pages: Math.ceil(total / Number(limit)),
             fees,
-            stats: stats[0] || { totalExpected: 0, totalCollected: 0, pending: 0, overdue: 0, paid: 0 },
+            stats: stats[0] || {
+                totalExpected:  0,
+                totalCollected: 0,
+                pending:        0,
+                overdue:        0,
+                paid:           0,
+            },
         });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message,
-        })
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
     }
 };
 

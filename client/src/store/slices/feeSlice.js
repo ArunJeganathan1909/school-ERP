@@ -3,10 +3,16 @@ import api from '../../api/axios';
 
 export const fetchAllFees = createAsyncThunk('fees/fetchAll', async (params = {}, { rejectWithValue }) => {
     try {
-        const query = new URLSearchParams(params).toString();
+        // Remove empty string values before building query string
+        const cleanParams = Object.fromEntries(
+            Object.entries(params).filter(([_, v]) => v !== '' && v !== null && v !== undefined)
+        );
+        const query = new URLSearchParams(cleanParams).toString();
         const { data } = await api.get(`/fees?${query}`);
         return data;
-    } catch (err) { return rejectWithValue(err.response?.data?.message); }
+    } catch (err) {
+        return rejectWithValue(err.response?.data?.message);
+    }
 });
 
 export const fetchMyFees = createAsyncThunk('fees/fetchMine', async (params = {}, { rejectWithValue }) => {

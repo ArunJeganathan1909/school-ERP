@@ -43,7 +43,7 @@ app.use('/api/assignments', require('./routes/assignmentRoutes'));
 app.use('/api/submissions', require('./routes/submissionRoutes'));
 app.use('/api/quizzes', require('./routes/quizRoutes'));
 app.use('/api/attendances', require('./routes/attendanceRoutes'));
-app.use('/api/fee', require('./routes/feeRoutes'));
+app.use('/api/fees', require('./routes/feeRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/announcements', require('./routes/announcementRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));

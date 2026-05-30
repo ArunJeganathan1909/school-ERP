@@ -33,11 +33,15 @@ export default function ManageFees() {
 
     useEffect(() => {
         dispatch(fetchCourses({ limit: 100 }));
+        // initial load — no status filter
         dispatch(fetchAllFees({ limit: 30 }));
     }, [dispatch]);
 
     useEffect(() => {
-        dispatch(fetchAllFees({ limit: 30, status: statusFilter }));
+        // only add status to params if it's not empty
+        const params = { limit: 30 };
+        if (statusFilter) params.status = statusFilter;
+        dispatch(fetchAllFees(params));
     }, [dispatch, statusFilter]);
 
     const handleChange = (e) => {

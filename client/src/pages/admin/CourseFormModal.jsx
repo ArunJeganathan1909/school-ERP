@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { createCourse, updateCourse } from '../../store/slices/courseSlice';
+import { createCourse, updateCourse, clearCourseError } from '../../store/slices/courseSlice';
 
 export default function CourseFormModal({ course, onClose }) {
     const dispatch = useDispatch();
@@ -40,6 +40,9 @@ export default function CourseFormModal({ course, onClose }) {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
+
+        // Clear any stale Redux error first
+        dispatch(clearCourseError());
 
         let result;
         if (course) {
