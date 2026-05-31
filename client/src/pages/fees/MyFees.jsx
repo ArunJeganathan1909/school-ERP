@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import Sidebar from '../../components/Sidebar';
 import { fetchMyFees } from '../../store/slices/feeSlice';
 import './MyFees.css';
+import { printInvoice, downloadInvoicePDF } from "../../utils/printInvoice";
 
 const STATUS_STYLES = {
     pending:  { bg: '#FFFBEB', color: '#D97706', label: 'Pending' },
@@ -16,6 +17,7 @@ export default function MyFees() {
     const dispatch = useDispatch();
     const { myFees: fees, totalDue, loading } = useSelector((s) => s.fees);
     const [filter, setFilter] = useState('');
+    const [downloadingId, setDownloadingId] = useState(null);
 
     useEffect(() => {
         dispatch(fetchMyFees());
@@ -90,6 +92,37 @@ export default function MyFees() {
                                                 {/* Progress bar */}
                                                 <div className="fee-card__progress-bar">
                                                     <div className="fee-card__progress-fill" style={{ width: `${paidPct}%`, background: fee.status === 'paid' ? '#059669' : '#4F46E5' }} />
+                                                    <div style={{
+                                                        paddingTop: 'var(--space-sm)',
+                                                        display: 'flex',
+                                                        justifyContent: 'flex-end',
+                                                        gap: 'var(--space-sm)',
+                                                        borderTop: '1px solid var(--color-border)',
+                                                        marginTop: 'var(--space-sm)',
+                                                    }}>
+                                                        <button
+                                                            className="btn btn-ghost btn-sm"
+                                                            onClick={() => printInvoice(fee)}
+                                                            style={{ fontSize: '0.875rem' }}
+                                                        >
+                                                            🖨 Print
+                                                        </button>
+                                                        <button
+                                                            className="btn btn-outline btn-sm"
+                                                            onClick={() =>
+                                                                downloadInvoicePDF(fee, (loading) =>
+                                                                    setDownloadingId(loading ? fee._id : null)
+                                                                )
+                                                            }
+                                                            disabled={downloadingId === fee._id}
+                                                            style={{ fontSize: '0.875rem' }}
+                                                        >
+                                                            {downloadingId === fee._id
+                                                                ? <><span className="spinner" style={{ width: 13, height: 13, borderWidth: 2, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} /> Generating…</>
+                                                                : '⬇ Download PDF'
+                                                            }
+                                                        </button>
+                                                    </div>
                                                 </div>
 
                                                 <div className="fee-card__amounts">

@@ -10,7 +10,7 @@ import {
 } from '../../store/slices/feeSlice';
 import api from '../../api/axios';
 import './ManageFees.css';
-import { printInvoice } from "../../utils/printInvoice";
+import { printInvoice, downloadInvoicePDF } from "../../utils/printInvoice";
 
 const FEE_TYPES = ['tuition', 'exam', 'library', 'lab', 'transport', 'hostel', 'other'];
 
@@ -63,6 +63,7 @@ export default function ManageFees() {
     const [showPayment,  setShowPayment]  = useState(null);
     const [paymentForm,  setPaymentForm]  = useState({ amount: '', method: 'cash', reference: '' });
     const [paymentSaving, setPaymentSaving] = useState(false);
+    const [downloadingId, setDownloadingId] = useState(null);
 
     /* ── initial load ── */
     useEffect(() => {
@@ -372,15 +373,33 @@ export default function ManageFees() {
                           </span>
                                             </td>
                                             <td>
-                                                <div style={{ display: 'flex', gap: 'var(--space-xs)', flexWrap: 'wrap' }}>
-                                                    {/* Print invoice */}
+                                                <div style={{ display: 'flex', gap: 'var(--space-xs)', flexWrap: 'wrap', alignItems: 'center' }}>
+
+                                                    {/* Print */}
                                                     <button
                                                         className="btn btn-ghost btn-sm"
                                                         onClick={() => printInvoice(fee)}
                                                         title="Print invoice"
-                                                        style={{ fontSize: '0.875rem' }}
+                                                        style={{ fontSize: '0.9rem', padding: '5px 8px' }}
                                                     >
                                                         🖨
+                                                    </button>
+
+                                                    {/* Download PDF */}
+                                                    <button
+                                                        className="btn btn-ghost btn-sm"
+                                                        onClick={() =>
+                                                            downloadInvoicePDF(fee, (loading) =>
+                                                                setDownloadingId(loading ? fee._id : null)
+                                                            )
+                                                        }
+                                                        disabled={downloadingId === fee._id}
+                                                        title="Download PDF"
+                                                        style={{ fontSize: '0.9rem', padding: '5px 8px' }}
+                                                    >
+                                                        {downloadingId === fee._id
+                                                            ? <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} />
+                                                            : '⬇'}
                                                     </button>
 
                                                     {/* Record payment */}
@@ -400,6 +419,7 @@ export default function ManageFees() {
                                                     >
                                                         Del
                                                     </button>
+
                                                 </div>
                                             </td>
                                         </tr>
