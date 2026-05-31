@@ -94,21 +94,23 @@ const feeSchema = new mongoose.Schema(
 );
 
 // Auto-calculate netAmount before saving
-feeSchema.pre('save', function (next) {
+feeSchema.pre('save', async function () {
+    // Step 1: always recalculate netAmount
     this.netAmount = this.totalAmount - (this.discount || 0);
 
-    // Auto-update status
+    // Step 2: always recalculate paidAmount from payments array
+    this.paidAmount = this.payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+    // Step 3: auto-update status based on recalculated values
     if (this.status !== 'waived') {
-        if (this.paidAmount <= 0){
+        if (this.paidAmount <= 0) {
             this.status = new Date() > new Date(this.dueDate) ? 'overdue' : 'pending';
-        } else if (this.paidAmount >= this.netAmount){
+        } else if (this.paidAmount >= this.netAmount) {
             this.status = 'paid';
         } else {
             this.status = 'partial';
         }
     }
-
-    next();
 });
 
 feeSchema.index({ student: 1, status: 1 });

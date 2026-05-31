@@ -210,46 +210,40 @@ exports.recordPayment = async (req, res) => {
         const { amount, method, reference } = req.body;
 
         const fee = await Fee.findById(req.params.id);
-        if (!fee) return  res.status(404).json({
-            success: false,
-            message: 'Fee not found',
-        })
+        if (!fee) return res.status(404).json({ success: false, message: 'Fee not found' });
 
+        // Validate amount
         const remaining = fee.netAmount - fee.paidAmount;
-        if (amount > remaining) {
+        if (Number(amount) > remaining) {
             return res.status(400).json({
                 success: false,
-                message: `Payment of ${amount} exceeds remaining balance of ${remaining} fee`,
+                message: `Payment of ${amount} exceeds remaining balance of ${remaining}`,
             });
         }
 
-        fee.payments.push({ amount, method, reference, recordedBy: req.user._id });
-        await fee.save(); // pre-save updates paid amount and status
+        // Push payment into array
+        fee.payments.push({
+            amount: Number(amount),
+            method: method || 'cash',
+            reference: reference || '',
+            recordedBy: req.user._id,
+            paidAt: new Date(),
+        });
 
+        // .save() triggers pre-save hook which recalculates paidAmount and status
+        await fee.save();
+
+        // Populate and return
         await fee.populate([
             { path: 'student', select: 'name email' },
-            { path: 'course', select: 'title code' },
+            { path: 'course',  select: 'title code' },
         ]);
 
-        res.status(200).json({
-            success: true,
-            fee
-        });
-        await notify({
-            recipientId: fee.student._id,
-            type: 'fee_paid',
-            title: 'Payment recorded',
-            message: `A payment of LKR ${amount.toLocaleString()} has been recorded for "${fee.title}".`,
-            link: '/student/fees',
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        })
+        res.status(200).json({ success: true, fee });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
     }
-}
+};
 
 // DELETE /api/fees/:id — admin only
 exports.deleteFee = async (req, res) => {
