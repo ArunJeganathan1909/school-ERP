@@ -10,6 +10,7 @@ import {
 } from '../../store/slices/feeSlice';
 import api from '../../api/axios';
 import './ManageFees.css';
+import { printInvoice } from "../../utils/printInvoice";
 
 const FEE_TYPES = ['tuition', 'exam', 'library', 'lab', 'transport', 'hostel', 'other'];
 
@@ -371,13 +372,32 @@ export default function ManageFees() {
                           </span>
                                             </td>
                                             <td>
-                                                <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
+                                                <div style={{ display: 'flex', gap: 'var(--space-xs)', flexWrap: 'wrap' }}>
+                                                    {/* Print invoice */}
+                                                    <button
+                                                        className="btn btn-ghost btn-sm"
+                                                        onClick={() => printInvoice(fee)}
+                                                        title="Print invoice"
+                                                        style={{ fontSize: '0.875rem' }}
+                                                    >
+                                                        🖨
+                                                    </button>
+
+                                                    {/* Record payment */}
                                                     {fee.status !== 'paid' && fee.status !== 'waived' && (
-                                                        <button className="btn btn-primary btn-sm" onClick={() => setShowPayment(fee)}>
+                                                        <button
+                                                            className="btn btn-primary btn-sm"
+                                                            onClick={() => setShowPayment(fee)}
+                                                        >
                                                             Pay
                                                         </button>
                                                     )}
-                                                    <button className="btn btn-danger btn-sm" onClick={() => handleDelete(fee._id)}>
+
+                                                    {/* Delete */}
+                                                    <button
+                                                        className="btn btn-danger btn-sm"
+                                                        onClick={() => handleDelete(fee._id)}
+                                                    >
                                                         Del
                                                     </button>
                                                 </div>
