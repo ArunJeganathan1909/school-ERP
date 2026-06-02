@@ -57,10 +57,16 @@ exports.getAnnouncement = async (req, res) => {
 // POST /api/announcements — admin or teacher
 exports.createAnnouncement = async (req, res) => {
     try {
-        const announcement = await Announcement.create({
+        const payload = {
             ...req.body,
             author: req.user._id,
-        });
+        };
+
+        if (!payload.course) {
+            payload.course = null;
+        }
+
+        const announcement = await Announcement.create(payload);
 
         await announcement.populate('author', 'name role');
 
