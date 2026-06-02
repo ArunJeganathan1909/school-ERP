@@ -384,3 +384,36 @@
 .quick-link-btn:hover .quick-link-btn__arrow {
     transform: translateX(3px);
 }
+
+/* ── Assignment stats bar ── */
+.assignment-stats-bar {
+    display: flex;
+    gap: var(--space-xl);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-md) var(--space-xl);
+    margin-bottom: var(--space-lg);
+    flex-wrap: wrap;
+}
+
+.assignment-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.assignment-stat__val {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    line-height: 1;
+}
+
+.assignment-stat__label {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}

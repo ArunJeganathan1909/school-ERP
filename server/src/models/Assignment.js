@@ -4,8 +4,8 @@ const assignmentSchema = new mongoose.Schema(
     {
         title: {
             type: String,
-            required: true,
-            trim: true
+            required: [true, 'Title is required'],
+            trim: true,
         },
         description: {
             type: String,
@@ -14,25 +14,25 @@ const assignmentSchema = new mongoose.Schema(
         subject: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Subject',
-            required: true,
+            default: null,          // ← not required at schema level
         },
         course: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Course',
-            required: true,
+            required: [true, 'Course is required'],
         },
         teacher: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User',
-            required: true,
+            required: [true, 'Teacher is required'],
         },
         dueDate: {
             type: Date,
-            required: true,
+            required: [true, 'Due date is required'],
         },
         totalMarks: {
             type: Number,
-            default: 100
+            default: 100,
         },
         passingMarks: {
             type: Number,
@@ -42,7 +42,7 @@ const assignmentSchema = new mongoose.Schema(
             type: String,
             default: '',
         },
-        instruction: {
+        instructions: {
             type: String,
             default: '',
         },
@@ -52,9 +52,10 @@ const assignmentSchema = new mongoose.Schema(
         },
         isPublished: {
             type: Boolean,
-            default: true
-        }
-    }, { timestamps: true }
+            default: true,
+        },
+    },
+    { timestamps: true }
 );
 
 assignmentSchema.index({ course: 1, dueDate: -1 });
