@@ -109,7 +109,10 @@ exports.dropCourse = async (req, res) => {
 exports.getMyEnrollments = async (req, res) => {
     try {
         const enrollments = await Enrollment.find({ student: req.user._id })
-            .populate('course', 'title code department duration thumbnail status maxStudents')
+            .populate({
+                path: 'course',
+                select: 'title code department teacher status',
+            })
             .sort({ enrolledAt: -1 });
 
         res.status(200).json({ success: true, enrollments });

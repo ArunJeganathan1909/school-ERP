@@ -1,14 +1,31 @@
 const Assignment = require('../models/Assignment');
 const Submission = require('../models/Submission');
 const Subject    = require('../models/Subject');
+const mongoose   = require('mongoose');
 
 // GET /api/assignments
 exports.getAssignments = async (req, res) => {
     try {
-        const { course, subject } = req.query;
+        const { course, courses, subject } = req.query;
+
         const filter = {};
-        if (course)  filter.course  = course;
-        if (subject) filter.subject = subject;
+
+        if (courses && courses.trim()) {
+            const ids = courses
+                .split(',')
+                .map(id => id.trim())
+                .filter(id => mongoose.isValidObjectId(id))
+                .map(id => new mongoose.Types.ObjectId(id));
+
+            if (ids.length > 0) filter.course = { $in: ids };
+        } else if (course && mongoose.isValidObjectId(course)) {
+            filter.course = new mongoose.Types.ObjectId(course);
+        }
+
+        if (subject && mongoose.isValidObjectId(subject)) {
+            filter.subject = new mongoose.Types.ObjectId(subject);
+        }
+
         if (req.user.role === 'student') filter.isPublished = true;
 
         const assignments = await Assignment.find(filter)
@@ -19,37 +36,12 @@ exports.getAssignments = async (req, res) => {
 
         res.status(200).json({ success: true, assignments });
     } catch (err) {
+        console.error('getAssignments error:', err);
         res.status(500).json({ success: false, message: err.message });
     }
 };
 
-// GET /api/assignments/:id
-exports.getAssignment = async (req, res) => {
-    try {
-        const assignment = await Assignment.findById(req.params.id)
-            .populate('subject', 'name code')
-            .populate('teacher', 'name profilePhoto')
-            .populate('course',  'title');
-
-        if (!assignment)
-            return res.status(404).json({ success: false, message: 'Assignment not found' });
-
-        let submission = null;
-        if (req.user.role === 'student') {
-            submission = await Submission.findOne({
-                assignment: req.params.id,
-                student: req.user._id,
-            });
-        }
-
-        res.status(200).json({ success: true, assignment, submission });
-    } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
-    }
-};
-
-// GET /api/assignments/teacher/subjects?course=id
-// Returns subjects assigned to the logged-in teacher, optionally filtered by course
+// GET /api/assignments/teacher/subjects
 exports.getMySubjects = async (req, res) => {
     try {
         const { course } = req.query;
@@ -66,26 +58,49 @@ exports.getMySubjects = async (req, res) => {
     }
 };
 
+// GET /api/assignments/:id
+exports.getAssignment = async (req, res) => {
+    try {
+        const assignment = await Assignment.findById(req.params.id)
+            .populate('subject', 'name code')
+            .populate('teacher', 'name profilePhoto')
+            .populate('course',  'title code');
+
+        if (!assignment)
+            return res.status(404).json({ success: false, message: 'Assignment not found' });
+
+        let submission = null;
+        if (req.user.role === 'student') {
+            submission = await Submission.findOne({
+                assignment: req.params.id,
+                student:    req.user._id,
+            });
+        }
+
+        res.status(200).json({ success: true, assignment, submission });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
 // POST /api/assignments
 exports.createAssignment = async (req, res) => {
     try {
         const { title, course, dueDate, subject } = req.body;
 
-        // Manual validation
         if (!title)   return res.status(400).json({ success: false, message: 'Title is required' });
         if (!course)  return res.status(400).json({ success: false, message: 'Course is required' });
         if (!dueDate) return res.status(400).json({ success: false, message: 'Due date is required' });
 
-        // Sanitize subject — convert empty string to null
         const sanitized = {
             ...req.body,
-            subject: subject && subject.trim() !== '' ? subject : null,
-            teacher: req.user._id,
+            subject:       subject && subject.trim() !== '' ? subject : null,
+            teacher:       req.user._id,
+            attachmentUrl: req.file?.path || req.body.attachmentUrl || '',
         };
 
         const assignment = await Assignment.create(sanitized);
-
-        const populated = await Assignment.findById(assignment._id)
+        const populated  = await Assignment.findById(assignment._id)
             .populate('subject', 'name code')
             .populate('course',  'title code')
             .populate('teacher', 'name');
@@ -99,7 +114,6 @@ exports.createAssignment = async (req, res) => {
 // PUT /api/assignments/:id
 exports.updateAssignment = async (req, res) => {
     try {
-        // Sanitize subject
         if (req.body.subject !== undefined) {
             req.body.subject =
                 req.body.subject && String(req.body.subject).trim() !== ''
@@ -110,7 +124,7 @@ exports.updateAssignment = async (req, res) => {
         const assignment = await Assignment.findByIdAndUpdate(
             req.params.id,
             { $set: req.body },
-            { new: true, runValidators: false }   // runValidators: false since subject is now nullable
+            { new: true, runValidators: false }
         )
             .populate('subject', 'name code')
             .populate('course',  'title code');
@@ -130,6 +144,65 @@ exports.deleteAssignment = async (req, res) => {
         await Assignment.findByIdAndDelete(req.params.id);
         await Submission.deleteMany({ assignment: req.params.id });
         res.status(200).json({ success: true, message: 'Assignment and all submissions deleted' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+// POST /api/assignments/:id/upload
+exports.uploadAttachment = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'No file uploaded' });
+        }
+
+        const assignment = await Assignment.findById(req.params.id);
+        if (!assignment)
+            return res.status(404).json({ success: false, message: 'Assignment not found' });
+
+        // Delete old cloudinary file if exists
+        if (assignment.attachmentUrl && assignment.attachmentUrl.includes('cloudinary')) {
+            try {
+                const { cloudinary } = require('../config/cloudinary');
+                const publicId = assignment.attachmentUrl
+                    .split('/').slice(-2).join('/').split('.')[0];
+                await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
+            } catch (_) {}
+        }
+
+        assignment.attachmentUrl = req.file.path;
+        await assignment.save();
+
+        res.status(200).json({
+            success: true,
+            attachmentUrl: req.file.path,
+            message: 'File uploaded successfully',
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+// DELETE /api/assignments/:id/upload
+exports.removeAttachment = async (req, res) => {
+    try {
+        const assignment = await Assignment.findById(req.params.id);
+        if (!assignment)
+            return res.status(404).json({ success: false, message: 'Assignment not found' });
+
+        if (assignment.attachmentUrl && assignment.attachmentUrl.includes('cloudinary')) {
+            try {
+                const { cloudinary } = require('../config/cloudinary');
+                const publicId = assignment.attachmentUrl
+                    .split('/').slice(-2).join('/').split('.')[0];
+                await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
+            } catch (_) {}
+        }
+
+        assignment.attachmentUrl = '';
+        await assignment.save();
+
+        res.status(200).json({ success: true, message: 'Attachment removed' });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
