@@ -7,13 +7,14 @@ const {
     updateAssignment,
     deleteAssignment,
     getMySubjects,
+    getStudentAssignments,
 } = require('../controllers/assignmentController');
 const { protect }   = require('../middleware/authMiddleware');
 const { authorize } = require('../middleware/roleMiddleware');
 
-// ── specific routes FIRST (before /:id) ──────────────────────────────────────
-// Changed from /my-subjects to /teacher/subjects to avoid Express param conflict
-router.get('/teacher/subjects', protect, authorize('admin', 'teacher'), getMySubjects);
+// ── specific named routes FIRST (must be before /:id) ────────────────────────
+router.get('/teacher/subjects',  protect, authorize('admin', 'teacher'), getMySubjects);
+router.get('/student/mine',      protect, authorize('student'),          getStudentAssignments);
 
 // ── general routes ────────────────────────────────────────────────────────────
 router.get('/',     protect, getAssignments);

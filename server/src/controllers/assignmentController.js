@@ -134,3 +134,30 @@ exports.deleteAssignment = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
+
+// GET /api/assignments/student/mine
+// Returns all published assignments for courses the student is enrolled in
+exports.getStudentAssignments = async (req, res) => {
+    try {
+        const { courseIds } = req.query;
+        // courseIds comes as comma-separated string: "id1,id2,id3"
+        if (!courseIds || !courseIds.trim()) {
+            return res.status(200).json({ success: true, assignments: [] });
+        }
+
+        const ids = courseIds.split(',').map(id => id.trim()).filter(Boolean);
+
+        const assignments = await Assignment.find({
+            course:      { $in: ids },
+            isPublished: true,
+        })
+            .populate('subject', 'name code')
+            .populate('course',  'title code')
+            .populate('teacher', 'name')
+            .sort({ dueDate: 1 });
+
+        res.status(200).json({ success: true, assignments });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
