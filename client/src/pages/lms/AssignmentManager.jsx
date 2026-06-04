@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import Sidebar from '../../components/Sidebar';
-import NotificationBell from '../../components/NotificationBell';
+import { useDispatch, useSelector }          from 'react-redux';
+import Sidebar                               from '../../components/Sidebar';
+import NotificationBell                      from '../../components/NotificationBell';
+import FileUpload                            from '../../components/FileUpload';
 import {
   fetchAssignments,
   createAssignment,
-} from '../../store/slices/assignmentSlice';
-import { fetchCourses } from '../../store/slices/courseSlice';
-import api from '../../api/axios';
+}                                            from '../../store/slices/assignmentSlice';
+import { fetchCourses }                      from '../../store/slices/courseSlice';
+import api                                   from '../../api/axios';
 
 const EMPTY = {
   title:               '',
@@ -20,6 +21,7 @@ const EMPTY = {
   passingMarks:        40,
   allowLateSubmission: false,
   isPublished:         true,
+  attachmentUrl:       '',
 };
 
 export default function AssignmentManager() {
@@ -34,29 +36,24 @@ export default function AssignmentManager() {
   const [formError,  setFormError]  = useState('');
   const [deletingId, setDeletingId] = useState(null);
 
-  // All subjects for this teacher (loaded once)
+  /* subjects for the logged-in teacher */
   const [allSubjects,      setAllSubjects]      = useState([]);
   const [subjectsLoading,  setSubjectsLoading]  = useState(false);
-
-  // Subjects filtered by selected course
   const [filteredSubjects, setFilteredSubjects] = useState([]);
 
-  /* ── load courses + assignments ── */
+  /* ── load on mount ── */
   useEffect(() => {
     dispatch(fetchCourses({ limit: 100 }));
     dispatch(fetchAssignments({}));
   }, [dispatch]);
 
-  /* ── load ALL subjects for this teacher (once) ── */
   useEffect(() => {
     const load = async () => {
       setSubjectsLoading(true);
       try {
-        // Updated endpoint path
         const { data } = await api.get('/assignments/teacher/subjects');
         setAllSubjects(data.subjects || []);
-      } catch (err) {
-        console.error('Failed to load subjects:', err);
+      } catch {
         setAllSubjects([]);
       }
       setSubjectsLoading(false);
@@ -64,35 +61,30 @@ export default function AssignmentManager() {
     load();
   }, []);
 
-  /* ── filter subjects when course changes ── */
+  /* ── filter subjects by selected course ── */
   useEffect(() => {
     if (!form.course) {
-      setFilteredSubjects(allSubjects); // show all if no course picked yet
+      setFilteredSubjects(allSubjects);
       return;
     }
     const filtered = allSubjects.filter(
         (s) => String(s.course?._id || s.course) === String(form.course)
     );
     setFilteredSubjects(filtered);
-
-    // If current subject doesn't belong to new course, reset it
     const stillValid = filtered.some((s) => s._id === form.subject);
-    if (!stillValid) {
-      setForm((f) => ({ ...f, subject: '' }));
-    }
+    if (!stillValid) setForm((f) => ({ ...f, subject: '' }));
   }, [form.course, allSubjects]);
 
-  /* ── handle field changes ── */
+  /* ── field handlers ── */
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setForm((f) => ({ ...f, [name]: type === 'checkbox' ? checked : value }));
   };
 
-  /* ── when subject is selected, auto-fill course ── */
+  /* when subject picked → auto-fill course */
   const handleSubjectChange = (e) => {
     const subjectId = e.target.value;
     const subject   = allSubjects.find((s) => s._id === subjectId);
-
     if (subject) {
       const courseId = subject.course?._id || subject.course;
       setForm((f) => ({
@@ -105,7 +97,7 @@ export default function AssignmentManager() {
     }
   };
 
-  /* ── open create modal ── */
+  /* ── open modals ── */
   const openCreate = () => {
     setEditItem(null);
     setForm(EMPTY);
@@ -113,14 +105,13 @@ export default function AssignmentManager() {
     setShowForm(true);
   };
 
-  /* ── open edit modal ── */
   const openEdit = (a) => {
     setEditItem(a);
     setForm({
       title:               a.title               || '',
       description:         a.description         || '',
       instructions:        a.instructions        || '',
-      course:              String(a.course?._id  || a.course || ''),
+      course:              String(a.course?._id  || a.course  || ''),
       subject:             String(a.subject?._id || a.subject || ''),
       dueDate:             a.dueDate
           ? new Date(a.dueDate).toISOString().slice(0, 16)
@@ -129,6 +120,7 @@ export default function AssignmentManager() {
       passingMarks:        a.passingMarks         ?? 40,
       allowLateSubmission: a.allowLateSubmission  ?? false,
       isPublished:         a.isPublished          ?? true,
+      attachmentUrl:       a.attachmentUrl        || '',
     });
     setFormError('');
     setShowForm(true);
@@ -139,20 +131,10 @@ export default function AssignmentManager() {
     e.preventDefault();
     setFormError('');
 
-    if (!form.title.trim()) {
-      setFormError('Title is required.');
-      return;
-    }
-    if (!form.course) {
-      setFormError('Please select a course.');
-      return;
-    }
-    if (!form.dueDate) {
-      setFormError('Due date is required.');
-      return;
-    }
+    if (!form.title.trim()) { setFormError('Title is required.');       return; }
+    if (!form.course)        { setFormError('Please select a course.'); return; }
+    if (!form.dueDate)       { setFormError('Due date is required.');   return; }
 
-    // Build payload — send null for empty subject (not "")
     const payload = {
       ...form,
       subject: form.subject && form.subject !== '' ? form.subject : null,
@@ -177,7 +159,7 @@ export default function AssignmentManager() {
 
   /* ── delete ── */
   const handleDelete = async (id, title) => {
-    if (!window.confirm(`Delete "${title}"? All submissions will be deleted too.`)) return;
+    if (!window.confirm(`Delete "${title}"?\nAll student submissions will also be deleted.`)) return;
     setDeletingId(id);
     try {
       await api.delete(`/assignments/${id}`);
@@ -188,17 +170,16 @@ export default function AssignmentManager() {
     setDeletingId(null);
   };
 
+  /* ── helpers ── */
   const isPast = (date) => new Date(date) < new Date();
 
-  // Subject dropdown placeholder text
   const subjectPlaceholder = useCallback(() => {
-    if (subjectsLoading) return 'Loading your subjects…';
-    if (allSubjects.length === 0) return 'No subjects assigned to you yet';
+    if (subjectsLoading)                              return 'Loading your subjects…';
+    if (allSubjects.length === 0)                     return 'No subjects assigned to you yet';
     if (form.course && filteredSubjects.length === 0) return 'No subjects for this course';
     return 'Select subject (optional)';
   }, [subjectsLoading, allSubjects, form.course, filteredSubjects]);
 
-  // Which subjects to show in dropdown
   const subjectsToShow = form.course ? filteredSubjects : allSubjects;
 
   return (
@@ -206,6 +187,7 @@ export default function AssignmentManager() {
         <Sidebar />
         <div className="main-content">
 
+          {/* ── Topbar ── */}
           <div className="topbar">
             <h1 className="topbar__title">Assignment manager</h1>
             <div className="topbar__right">
@@ -218,7 +200,7 @@ export default function AssignmentManager() {
 
           <div className="page-body">
 
-            {/* Stats strip */}
+            {/* ── Stats strip ── */}
             <div style={{
               display: 'flex', gap: 'var(--space-xl)',
               background: 'var(--color-surface)',
@@ -229,10 +211,11 @@ export default function AssignmentManager() {
               flexWrap: 'wrap',
             }}>
               {[
-                { label: 'Total',     val: assignments.length,                              color: 'var(--color-text-primary)' },
-                { label: 'Published', val: assignments.filter(a => a.isPublished).length,  color: '#059669' },
+                { label: 'Total',     val: assignments.length,                                 color: 'var(--color-text-primary)' },
+                { label: 'Published', val: assignments.filter(a => a.isPublished).length,      color: '#059669' },
                 { label: 'Active',    val: assignments.filter(a => !isPast(a.dueDate)).length, color: '#D97706' },
                 { label: 'Past due',  val: assignments.filter(a => isPast(a.dueDate)).length,  color: '#DC2626' },
+                { label: 'With file', val: assignments.filter(a => a.attachmentUrl).length,    color: '#4F46E5' },
               ].map((s) => (
                   <div key={s.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                     <span style={{ fontSize: '1.5rem', fontWeight: 700, color: s.color, lineHeight: 1 }}>{s.val}</span>
@@ -241,6 +224,7 @@ export default function AssignmentManager() {
               ))}
             </div>
 
+            {/* ── Table ── */}
             {loading ? (
                 <div className="empty-state">
                   <div className="spinner" style={{ borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} />
@@ -249,7 +233,11 @@ export default function AssignmentManager() {
                 <div className="empty-state">
                   <div className="empty-state__icon">📝</div>
                   <p>No assignments yet.</p>
-                  <button className="btn btn-primary" style={{ marginTop: 'var(--space-md)' }} onClick={openCreate}>
+                  <button
+                      className="btn btn-primary"
+                      style={{ marginTop: 'var(--space-md)' }}
+                      onClick={openCreate}
+                  >
                     Create first assignment
                   </button>
                 </div>
@@ -263,6 +251,7 @@ export default function AssignmentManager() {
                       <th>Course</th>
                       <th>Due date</th>
                       <th>Marks</th>
+                      <th>File</th>
                       <th>Status</th>
                       <th>Actions</th>
                     </tr>
@@ -271,44 +260,85 @@ export default function AssignmentManager() {
                     {assignments.map((a) => (
                         <tr key={a._id}>
                           <td style={{ fontWeight: 500 }}>{a.title}</td>
+
                           <td>
                             {a.subject ? (
                                 <div>
-                                  <div style={{ fontWeight: 500, fontSize: '0.875rem' }}>{a.subject.name}</div>
-                                  <div style={{ fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: 600 }}>{a.subject.code}</div>
+                                  <div style={{ fontWeight: 500, fontSize: '0.875rem' }}>
+                                    {a.subject.name}
+                                  </div>
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: 600 }}>
+                                    {a.subject.code}
+                                  </div>
                                 </div>
                             ) : (
                                 <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>—</span>
                             )}
                           </td>
+
                           <td style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
                             {a.course?.title || '—'}
                           </td>
+
                           <td>
-                                                <span style={{
-                                                  color: isPast(a.dueDate) ? '#DC2626' : 'var(--color-text-secondary)',
-                                                  fontWeight: isPast(a.dueDate) ? 600 : 400,
-                                                  fontSize: '0.875rem',
-                                                }}>
-                                                    {new Date(a.dueDate).toLocaleDateString('en-GB', {
-                                                      day: 'numeric', month: 'short', year: 'numeric',
-                                                    })}
-                                                  {isPast(a.dueDate) && (
-                                                      <span style={{ marginLeft: 4, fontSize: '0.7rem', opacity: 0.8 }}>
-                                                            (closed)
-                                                        </span>
-                                                  )}
-                                                </span>
+                        <span style={{
+                          color: isPast(a.dueDate) ? '#DC2626' : 'var(--color-text-secondary)',
+                          fontWeight: isPast(a.dueDate) ? 600 : 400,
+                          fontSize: '0.875rem',
+                        }}>
+                          {new Date(a.dueDate).toLocaleDateString('en-GB', {
+                            day: 'numeric', month: 'short', year: 'numeric',
+                          })}
+                          {isPast(a.dueDate) && (
+                              <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>closed</div>
+                          )}
+                        </span>
                           </td>
+
                           <td style={{ fontWeight: 600 }}>{a.totalMarks}</td>
+
+                          {/* File attachment indicator */}
                           <td>
-                                                <span className={`badge ${a.isPublished ? 'badge-success' : 'badge-error'}`}>
-                                                    {a.isPublished ? 'Published' : 'Draft'}
-                                                </span>
+                            {a.attachmentUrl ? (
+                                <a
+                                    href={a.attachmentUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title="Open attachment"
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 4,
+                                      fontSize: '0.75rem',
+                                      color: 'var(--color-primary)',
+                                      fontWeight: 600,
+                                      textDecoration: 'none',
+                                      background: 'var(--color-primary-light)',
+                                      padding: '2px 8px',
+                                      borderRadius: 'var(--radius-full)',
+                                    }}
+                                >
+                                  📎 File
+                                </a>
+                            ) : (
+                                <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>—</span>
+                            )}
                           </td>
+
+                          <td>
+                        <span className={`badge ${a.isPublished ? 'badge-success' : 'badge-error'}`}>
+                          {a.isPublished ? 'Published' : 'Draft'}
+                        </span>
+                          </td>
+
                           <td>
                             <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
-                              <button className="btn btn-outline btn-sm" onClick={() => openEdit(a)}>Edit</button>
+                              <button
+                                  className="btn btn-outline btn-sm"
+                                  onClick={() => openEdit(a)}
+                              >
+                                Edit
+                              </button>
                               <button
                                   className="btn btn-danger btn-sm"
                                   onClick={() => handleDelete(a._id, a.title)}
@@ -327,7 +357,7 @@ export default function AssignmentManager() {
           </div>
         </div>
 
-        {/* ══ MODAL ══ */}
+        {/* ══ CREATE / EDIT MODAL ══ */}
         {showForm && (
             <div className="modal-overlay" onClick={() => setShowForm(false)}>
               <div
@@ -343,7 +373,10 @@ export default function AssignmentManager() {
                 </div>
 
                 {formError && (
-                    <div className="alert alert-error" style={{ margin: '0 var(--space-lg) var(--space-sm)' }}>
+                    <div
+                        className="alert alert-error"
+                        style={{ margin: '0 var(--space-lg) var(--space-sm)' }}
+                    >
                       {formError}
                     </div>
                 )}
@@ -363,23 +396,21 @@ export default function AssignmentManager() {
                     />
                   </div>
 
-                  {/* Subject — pick first, course auto-fills */}
+                  {/* Subject */}
                   <div className="form-group">
                     <label className="form-label">
                       Subject
                       <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginLeft: 8, fontWeight: 400 }}>
-                                        — selecting a subject will auto-fill the course
-                                    </span>
+                    — selecting a subject auto-fills the course
+                  </span>
                     </label>
 
-                    {/* Warning if no subjects */}
                     {!subjectsLoading && allSubjects.length === 0 && (
                         <div className="alert alert-info" style={{ marginBottom: 'var(--space-sm)', fontSize: '0.8125rem' }}>
-                          ⚠ You have no subjects assigned. Ask your admin to assign subjects to your account.
+                          ⚠ No subjects assigned to you. Ask your admin to assign subjects.
                         </div>
                     )}
 
-                    {/* Warning if course selected but no subjects for it */}
                     {form.course && !subjectsLoading && filteredSubjects.length === 0 && allSubjects.length > 0 && (
                         <div className="alert alert-info" style={{ marginBottom: 'var(--space-sm)', fontSize: '0.8125rem' }}>
                           ⚠ No subjects assigned to you for this course.
@@ -416,8 +447,8 @@ export default function AssignmentManager() {
                         Course *
                         {form.course && form.subject && (
                             <span style={{ fontSize: '0.7rem', color: '#059669', marginLeft: 6, fontWeight: 400 }}>
-                                                (auto-filled from subject)
-                                            </span>
+                        (auto-filled)
+                      </span>
                         )}
                       </label>
                       <select
@@ -501,9 +532,22 @@ export default function AssignmentManager() {
                     />
                   </div>
 
+                  {/* File upload */}
+                  <FileUpload
+                      label="Attachment (optional)"
+                      value={form.attachmentUrl}
+                      onChange={(url) => setForm((f) => ({ ...f, attachmentUrl: url || '' }))}
+                      folder="assignments"
+                      hint="PDF, DOCX, PPTX, XLSX, images or ZIP — max 20 MB"
+                  />
+
                   {/* Checkboxes */}
                   <div style={{ display: 'flex', gap: 'var(--space-xl)', flexWrap: 'wrap' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', cursor: 'pointer', fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>
+                    <label style={{
+                      display: 'flex', alignItems: 'center',
+                      gap: 'var(--space-sm)', cursor: 'pointer',
+                      fontSize: '0.875rem', color: 'var(--color-text-secondary)',
+                    }}>
                       <input
                           type="checkbox"
                           name="allowLateSubmission"
@@ -512,7 +556,11 @@ export default function AssignmentManager() {
                       />
                       Allow late submission
                     </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', cursor: 'pointer', fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>
+                    <label style={{
+                      display: 'flex', alignItems: 'center',
+                      gap: 'var(--space-sm)', cursor: 'pointer',
+                      fontSize: '0.875rem', color: 'var(--color-text-secondary)',
+                    }}>
                       <input
                           type="checkbox"
                           name="isPublished"
@@ -524,10 +572,18 @@ export default function AssignmentManager() {
                   </div>
 
                   <div className="modal__footer">
-                    <button type="button" className="btn btn-ghost" onClick={() => setShowForm(false)}>
+                    <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => setShowForm(false)}
+                    >
                       Cancel
                     </button>
-                    <button type="submit" className="btn btn-primary" disabled={saving}>
+                    <button
+                        type="submit"
+                        className="btn btn-primary"
+                        disabled={saving}
+                    >
                       {saving
                           ? <><span className="spinner"></span> Saving…</>
                           : editItem ? 'Save changes' : 'Create assignment'

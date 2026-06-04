@@ -197,3 +197,45 @@
     height: calc(100vh - 64px);  /* topbar only, filter bar scrolls with content */
     overflow: hidden;
 }
+
+/* ── Assignment attachment ── */
+.assignment-attachment {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    background: var(--color-primary-light);
+    border: 1.5px solid var(--color-primary);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-lg);
+}
+
+.assignment-attachment__icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.assignment-attachment__info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.assignment-attachment__label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-primary);
+}
+
+.assignment-attachment__name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
