@@ -328,6 +328,45 @@ export default function AssignmentList() {
                                     </div>
                                 )}
 
+                                {/* ── Attachment download ── */}
+                                {current.attachmentUrl && current.attachmentUrl.trim() !== '' && (
+                                    <div className="assignment-attachment">
+                                        <div className="assignment-attachment__icon">
+                                            {current.attachmentUrl.endsWith('.pdf')  ? '📄' :
+                                                current.attachmentUrl.match(/\.(jpg|jpeg|png|gif)$/i) ? '🖼' :
+                                                    current.attachmentUrl.match(/\.(doc|docx)$/i) ? '📝' :
+                                                        current.attachmentUrl.match(/\.(ppt|pptx)$/i) ? '📊' :
+                                                            current.attachmentUrl.match(/\.(xls|xlsx)$/i) ? '📈' :
+                                                                current.attachmentUrl.match(/\.zip$/i)        ? '🗜' :
+                                                                    '📎'}
+                                        </div>
+                                        <div className="assignment-attachment__info">
+            <span className="assignment-attachment__label">
+                📎 Attachment from teacher
+            </span>
+                                            <span className="assignment-attachment__name">
+                {(() => {
+                    try {
+                        const raw = current.attachmentUrl.split('/').pop();
+                        return decodeURIComponent(raw.replace(/^\d+-/, ''));
+                    } catch {
+                        return current.attachmentUrl.split('/').pop();
+                    }
+                })()}
+            </span>
+                                        </div>
+                                    <a
+                                        href={current.attachmentUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="btn btn-primary btn-sm"
+                                        download
+                                        >
+                                        ⬇ Download
+                                    </a>
+                                    </div>
+                                    )}
+
                                 <hr className="divider" />
 
                                 {/* ── Submission section ── */}
