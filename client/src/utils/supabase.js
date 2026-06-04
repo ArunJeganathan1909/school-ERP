@@ -16,10 +16,23 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
  * @returns {Promise<{url: string, path: string}>}
  */
 export async function uploadFile(file, folder = 'assignments') {
-    const ext       = file.name.split('.').pop();
+    // Split extension from base name
+    const dotIndex  = file.name.lastIndexOf('.');
+    const ext       = dotIndex !== -1 ? file.name.slice(dotIndex + 1).toLowerCase() : 'bin';
+    const baseName  = dotIndex !== -1 ? file.name.slice(0, dotIndex) : file.name;
+
+    // Sanitize: lowercase, replace anything that isn't a-z 0-9 or hyphen with hyphen
+    const safeName  = baseName
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, '-')   // replace special chars with hyphens
+            .replace(/-+/g, '-')           // collapse multiple hyphens
+            .replace(/^-|-$/g, '')         // trim leading/trailing hyphens
+            .slice(0, 50)                  // limit length
+        || 'file';                     // fallback if empty
+
     const timestamp = Date.now();
-    const safeName  = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const path      = `${folder}/${timestamp}_${safeName}`;
+    // const path      = `${folder}/${timestamp}-${safeName}.${ext}`;
+    const path      = `${timestamp}-${safeName}.${ext}`;
 
     const { data, error } = await supabase.storage
         .from('assignments')
@@ -60,8 +73,8 @@ export async function deleteFile(path) {
 export function getPathFromUrl(url) {
     if (!url) return null;
     try {
-        const urlObj  = new URL(url);
-        const parts   = urlObj.pathname.split('/assignments/');
+        const urlObj = new URL(url);
+        const parts  = urlObj.pathname.split('/assignments/');
         return parts.length > 1 ? parts[1] : null;
     } catch {
         return null;
