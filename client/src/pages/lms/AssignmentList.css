@@ -239,3 +239,150 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* ── Student submission file card (after submission) ── */
+.submission-file-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-md);
+}
+
+.submission-file-card__icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.submission-file-card__info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.submission-file-card__label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-muted);
+}
+
+.submission-file-card__name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ── Upload drop zone ── */
+.submission-upload-zone {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md) var(--space-lg);
+    border: 2px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    background: var(--color-bg);
+}
+
+.submission-upload-zone:hover {
+    border-color: var(--color-primary);
+    background: var(--color-primary-light);
+}
+
+.submission-upload-zone__icon {
+    font-size: 1.25rem;
+    flex-shrink: 0;
+}
+
+.submission-upload-zone__text {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+}
+
+/* ── Upload progress ── */
+.submission-upload-progress {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    padding: var(--space-md);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+}
+
+.submission-upload-progress__label {
+    font-size: 0.875rem;
+    color: var(--color-primary);
+    font-weight: 500;
+}
+
+.submission-upload-progress__bar {
+    height: 6px;
+    background: var(--color-border);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+}
+
+.submission-upload-progress__fill {
+    height: 100%;
+    background: var(--color-primary);
+    border-radius: var(--radius-full);
+    transition: width 0.3s ease;
+}
+
+.submission-upload-progress__pct {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    text-align: right;
+}
+
+/* ── Uploaded file preview (before submit) ── */
+.submission-upload-preview {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    background: #ECFDF5;
+    border: 1.5px solid #A7F3D0;
+    border-radius: var(--radius-md);
+}
+
+.submission-upload-preview__icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.submission-upload-preview__info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.submission-upload-preview__name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #065F46;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.submission-upload-preview__ready {
+    font-size: 0.75rem;
+    color: #059669;
+    font-weight: 500;
+}

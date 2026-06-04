@@ -1,48 +1,94 @@
-import { useEffect, useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useEffect, useState }               from 'react';
+import { useDispatch, useSelector }          from 'react-redux';
 import { fetchAssignment, submitAssignment } from '../../store/slices/assignmentSlice';
-import { fetchMyEnrollments } from '../../store/slices/enrollmentSlice';
-import Sidebar from '../../components/Sidebar';
-import NotificationBell from '../../components/NotificationBell';
-import api from '../../api/axios';
+import { fetchMyEnrollments }                from '../../store/slices/enrollmentSlice';
+import Sidebar                               from '../../components/Sidebar';
+import NotificationBell                      from '../../components/NotificationBell';
+import { uploadSubmissionFile }              from '../../utils/supabase';
+import api                                   from '../../api/axios';
 import './AssignmentList.css';
+
+/* ── allowed types for student submission ── */
+const SUBMISSION_TYPES = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'image/jpeg', 'image/png', 'image/gif',
+    'text/plain',
+    'application/zip', 'application/x-zip-compressed',
+];
+
+const FILE_ICON = (url = '') => {
+    if (!url) return '📎';
+    const u = url.toLowerCase();
+    if (u.endsWith('.pdf'))                return '📄';
+    if (u.match(/\.(doc|docx)$/))         return '📝';
+    if (u.match(/\.(ppt|pptx)$/))         return '📊';
+    if (u.match(/\.(xls|xlsx)$/))         return '📈';
+    if (u.match(/\.(jpg|jpeg|png|gif)$/)) return '🖼';
+    if (u.endsWith('.zip'))               return '🗜';
+    return '📎';
+};
+
+const getFileName = (url) => {
+    if (!url) return '';
+    try {
+        return decodeURIComponent(url.split('/').pop().replace(/^\d+-/, ''));
+    } catch {
+        return url.split('/').pop();
+    }
+};
 
 export default function AssignmentList() {
     const dispatch = useDispatch();
 
-    const { current, currentSubmission, error } = useSelector((s) => s.assignments);
-    const { list: enrollments, loading: enrollLoading } = useSelector((s) => s.enrollments);
+    const { current, currentSubmission, error: assignError } = useSelector((s) => s.assignments);
+    const { list: enrollments, loading: enrollLoading }      = useSelector((s) => s.enrollments);
 
-    // Local assignment list (fetched directly, not via Redux slice)
-    const [assignments,   setAssignments]   = useState([]);
-    const [assLoading,    setAssLoading]    = useState(false);
+    /* local assignment list */
+    const [assignments,  setAssignments]  = useState([]);
+    const [assLoading,   setAssLoading]   = useState(false);
 
-    const [selected,      setSelected]      = useState(null);
-    const [textAnswer,    setTextAnswer]    = useState('');
-    const [submitting,    setSubmitting]    = useState(false);
-    const [submitError,   setSubmitError]   = useState('');
+    /* selection */
+    const [selected,     setSelected]     = useState(null);
 
-    // Filter state
-    const [statusFilter,  setStatusFilter]  = useState('all');  // all | open | overdue
-    const [courseFilter,  setCourseFilter]  = useState('all');  // all | courseId
+    /* submission form */
+    const [textAnswer,   setTextAnswer]   = useState('');
+    const [submitting,   setSubmitting]   = useState(false);
+    const [submitError,  setSubmitError]  = useState('');
 
-    /* ── Step 1: load enrollments ── */
+    /* file upload for submission */
+    const [subFile,      setSubFile]      = useState(null);
+    const [subFileUrl,   setSubFileUrl]   = useState('');
+    const [uploading,    setUploading]    = useState(false);
+    const [uploadPct,    setUploadPct]    = useState(0);
+    const [uploadError,  setUploadError]  = useState('');
+
+    /* filters */
+    const [statusFilter, setStatusFilter] = useState('all');
+    const [courseFilter, setCourseFilter] = useState('all');
+
+    /* ── load enrollments ── */
     useEffect(() => {
         dispatch(fetchMyEnrollments());
     }, [dispatch]);
 
-    /* ── Step 2: once enrollments load, fetch assignments for ALL courses ── */
+    /* ── load assignments for ALL enrolled courses ── */
     useEffect(() => {
-        const activeEnrollments = enrollments.filter(e => e.status === 'active');
-        if (activeEnrollments.length === 0) return;
+        const active = enrollments.filter(e => e.status === 'active');
+        if (active.length === 0) return;
 
-        const courseIds = activeEnrollments
+        const courseIds = active
             .map(e => e.course?._id || e.course)
             .filter(Boolean);
 
         if (courseIds.length === 0) return;
 
-        const loadAssignments = async () => {
+        const load = async () => {
             setAssLoading(true);
             try {
                 const { data } = await api.get(
@@ -56,62 +102,126 @@ export default function AssignmentList() {
             setAssLoading(false);
         };
 
-        loadAssignments();
+        load();
     }, [enrollments]);
 
-    /* ── Select an assignment ── */
+    /* ── reset submission form when assignment changes ── */
     const handleSelect = (assignment) => {
         setSelected(assignment._id);
         setTextAnswer('');
+        setSubFile(null);
+        setSubFileUrl('');
         setSubmitError('');
+        setUploadError('');
         dispatch(fetchAssignment(assignment._id));
     };
 
-    /* ── Submit answer ── */
+    /* ── handle file selection for submission ── */
+    const handleSubFileChange = async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+
+        setUploadError('');
+
+        if (!SUBMISSION_TYPES.includes(file.type)) {
+            setUploadError('File type not allowed. Use PDF, Word, PowerPoint, Excel, images or ZIP.');
+            return;
+        }
+        if (file.size > 20 * 1024 * 1024) {
+            setUploadError('File too large. Maximum size is 20 MB.');
+            return;
+        }
+
+        setSubFile(file);
+        setUploading(true);
+        setUploadPct(10);
+
+        const interval = setInterval(() => {
+            setUploadPct(p => Math.min(p + 12, 88));
+        }, 300);
+
+        try {
+            const { url } = await uploadSubmissionFile(file);
+            clearInterval(interval);
+            setUploadPct(100);
+            setSubFileUrl(url);
+            setTimeout(() => setUploadPct(0), 600);
+        } catch (err) {
+            clearInterval(interval);
+            setUploadError(`Upload failed: ${err.message}`);
+            setSubFile(null);
+            setSubFileUrl('');
+            setUploadPct(0);
+        }
+
+        setUploading(false);
+    };
+
+    const handleRemoveSubFile = () => {
+        setSubFile(null);
+        setSubFileUrl('');
+        setUploadError('');
+    };
+
+    /* ── submit ── */
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!textAnswer.trim()) return;
+
+        if (!textAnswer.trim() && !subFileUrl) {
+            setSubmitError('Please write an answer or upload a file (or both).');
+            return;
+        }
+
         setSubmitting(true);
         setSubmitError('');
+
         const result = await dispatch(
-            submitAssignment({ assignmentId: selected, textAnswer })
+            submitAssignment({
+                assignmentId: selected,
+                textAnswer:   textAnswer.trim(),
+                fileUrl:      subFileUrl || undefined,
+            })
         );
+
         if (submitAssignment.rejected.match(result)) {
             setSubmitError(result.payload || 'Submission failed. Please try again.');
         }
+
         setSubmitting(false);
     };
 
-    /* ── Helpers ── */
+    /* ── helpers ── */
     const isPast = (date) => new Date(date) < new Date();
 
     const statusLabel = (a) => {
-        if (isPast(a.dueDate)) return { label: 'Overdue', color: '#DC2626', bg: '#FEF2F2' };
+        if (isPast(a.dueDate)) return { label: 'Overdue',        color: '#DC2626', bg: '#FEF2F2' };
         const diff = Math.ceil((new Date(a.dueDate) - new Date()) / 86400000);
-        if (diff === 0) return { label: 'Due today', color: '#DC2626', bg: '#FEF2F2' };
-        if (diff <= 3)  return { label: `Due in ${diff}d`, color: '#D97706', bg: '#FFFBEB' };
-        return { label: 'Open', color: '#059669', bg: '#ECFDF5' };
+        if (diff === 0) return    { label: 'Due today',       color: '#DC2626', bg: '#FEF2F2' };
+        if (diff <= 3)  return    { label: `Due in ${diff}d`, color: '#D97706', bg: '#FFFBEB' };
+        return                    { label: 'Open',             color: '#059669', bg: '#ECFDF5' };
     };
 
-    /* ── Build unique course list for filter tabs ── */
+    /* ── filter courses ── */
     const enrolledCourses = enrollments
         .filter(e => e.status === 'active' && e.course)
-        .map(e => ({ _id: e.course?._id || e.course, title: e.course?.title || e.course?.code || 'Course' }))
-        .filter((c, i, arr) => arr.findIndex(x => String(x._id) === String(c._id)) === i);
+        .map(e => ({
+            _id:   e.course?._id  || e.course,
+            title: e.course?.title || e.course?.code || 'Course',
+        }))
+        .filter((c, i, arr) =>
+            arr.findIndex(x => String(x._id) === String(c._id)) === i
+        );
 
-    /* ── Apply filters ── */
+    /* ── apply filters ── */
     const filtered = assignments.filter(a => {
-        // Course filter
-        if (courseFilter !== 'all' && String(a.course?._id || a.course) !== String(courseFilter)) {
-            return false;
-        }
-        // Status filter
-        if (statusFilter === 'open'    && isPast(a.dueDate))  return false;
+        if (courseFilter !== 'all' &&
+            String(a.course?._id || a.course) !== String(courseFilter)) return false;
+        if (statusFilter === 'open'    &&  isPast(a.dueDate)) return false;
         if (statusFilter === 'overdue' && !isPast(a.dueDate)) return false;
         return true;
     });
 
-    /* ── Counts for filter badges ── */
     const counts = {
         all:     assignments.length,
         open:    assignments.filter(a => !isPast(a.dueDate)).length,
@@ -125,31 +235,27 @@ export default function AssignmentList() {
             <Sidebar />
             <div className="main-content">
 
+                {/* ── Topbar ── */}
                 <div className="topbar">
                     <h1 className="topbar__title">Assignments</h1>
                     <div className="topbar__right">
                         <NotificationBell />
                         {assignments.length > 0 && (
-                            <span style={{
-                                fontSize: '0.8125rem',
-                                color: 'var(--color-text-muted)',
-                            }}>
+                            <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
                                 {filtered.length} of {assignments.length}
                             </span>
                         )}
                     </div>
                 </div>
 
-                {/* ── Filter bar (course tabs + status tabs) ── */}
+                {/* ── Filter bar ── */}
                 {assignments.length > 0 && (
                     <div className="assignment-filter-bar">
-
-                        {/* Status filter */}
                         <div className="assignment-filter-group">
                             {[
-                                { key: 'all',     label: `All (${counts.all})`         },
-                                { key: 'open',    label: `Open (${counts.open})`        },
-                                { key: 'overdue', label: `Overdue (${counts.overdue})`  },
+                                { key: 'all',     label: `All (${counts.all})`        },
+                                { key: 'open',    label: `Open (${counts.open})`       },
+                                { key: 'overdue', label: `Overdue (${counts.overdue})` },
                             ].map(({ key, label }) => (
                                 <button
                                     key={key}
@@ -161,7 +267,6 @@ export default function AssignmentList() {
                             ))}
                         </div>
 
-                        {/* Course filter (only if enrolled in 2+ courses) */}
                         {enrolledCourses.length > 1 && (
                             <div className="assignment-filter-group">
                                 <button
@@ -186,7 +291,7 @@ export default function AssignmentList() {
 
                 <div className="assignment-layout">
 
-                    {/* ── Left pane: assignment list ── */}
+                    {/* ══ LEFT: list pane ══ */}
                     <div className="assignment-list-pane">
 
                         {isLoading ? (
@@ -200,10 +305,7 @@ export default function AssignmentList() {
                         ) : enrollments.filter(e => e.status === 'active').length === 0 ? (
                             <div className="empty-state">
                                 <div className="empty-state__icon">📚</div>
-                                <p>You are not enrolled in any courses.</p>
-                                <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-                                    Enroll in a course to see assignments.
-                                </p>
+                                <p>Not enrolled in any courses.</p>
                             </div>
 
                         ) : assignments.length === 0 ? (
@@ -211,7 +313,7 @@ export default function AssignmentList() {
                                 <div className="empty-state__icon">📝</div>
                                 <p>No assignments yet.</p>
                                 <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-                                    Your teachers haven't posted any assignments yet.
+                                    Your teachers haven't posted any assignments.
                                 </p>
                             </div>
 
@@ -249,27 +351,24 @@ export default function AssignmentList() {
                                             {st.label}
                                         </span>
                                     </div>
-
                                     <div className="assignment-item__title">{a.title}</div>
-
-                                    <div className="assignment-item__meta">
-                                        {/* Course name */}
-                                        <span style={{ color: 'var(--color-primary)', fontWeight: 500 }}>
-                                            {a.course?.title || a.course?.code || ''}
-                                        </span>
+                                    <div className="assignment-item__meta" style={{ color: 'var(--color-primary)', fontWeight: 500 }}>
+                                        {a.course?.title || a.course?.code || ''}
                                     </div>
-
                                     <div className="assignment-item__meta">
                                         📅 {new Date(a.dueDate).toLocaleDateString('en-GB', {
                                         day: 'numeric', month: 'short', year: 'numeric',
                                     })} · 🎯 {a.totalMarks} marks
+                                        {a.attachmentUrl && (
+                                            <span style={{ marginLeft: 6, color: 'var(--color-primary)' }}>· 📎</span>
+                                        )}
                                     </div>
                                 </div>
                             );
                         })}
                     </div>
 
-                    {/* ── Right pane: assignment detail ── */}
+                    {/* ══ RIGHT: detail pane ══ */}
                     <div className="assignment-detail-pane">
 
                         {!selected ? (
@@ -286,20 +385,25 @@ export default function AssignmentList() {
                         ) : (
                             <div className="assignment-detail">
 
-                                {/* Header */}
+                                {/* ── Title ── */}
                                 <h2 className="assignment-detail__title">{current.title}</h2>
 
+                                {/* ── Meta ── */}
                                 <div className="assignment-detail__meta">
                                     {current.subject?.name && (
-                                        <span>📖 {current.subject.name} ({current.subject.code})</span>
+                                        <span>📖 {current.subject.name}
+                                            {current.subject.code && ` (${current.subject.code})`}
+                                        </span>
                                     )}
                                     {current.course?.title && (
                                         <span>📚 {current.course.title}</span>
                                     )}
-                                    <span>📅 Due: {new Date(current.dueDate).toLocaleDateString('en-GB', {
+                                    <span>
+                                        📅 {new Date(current.dueDate).toLocaleDateString('en-GB', {
                                         day: 'numeric', month: 'long', year: 'numeric',
                                         hour: '2-digit', minute: '2-digit',
-                                    })}</span>
+                                    })}
+                                    </span>
                                     <span>🎯 {current.totalMarks} marks</span>
                                     <span>✅ Pass: {current.passingMarks}</span>
                                     {current.allowLateSubmission && (
@@ -307,71 +411,66 @@ export default function AssignmentList() {
                                     )}
                                 </div>
 
-                                {/* Overdue warning */}
+                                {/* ── Overdue warning ── */}
                                 {isPast(current.dueDate) && !currentSubmission && (
                                     <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>
                                         ⚠ This assignment is past its due date.
                                         {current.allowLateSubmission
                                             ? ' Late submissions are accepted.'
-                                            : ' Submissions are no longer accepted.'}
+                                            : ' Submissions are no longer accepted.'
+                                        }
                                     </div>
                                 )}
 
+                                {/* ── Description ── */}
                                 {current.description && (
-                                    <div className="assignment-detail__desc">{current.description}</div>
+                                    <div className="assignment-detail__desc">
+                                        {current.description}
+                                    </div>
                                 )}
 
+                                {/* ── Instructions ── */}
                                 {current.instructions && (
                                     <div className="assignment-detail__instructions">
                                         <strong>Instructions:</strong>
-                                        <p style={{ marginTop: 'var(--space-xs)' }}>{current.instructions}</p>
+                                        <p style={{ marginTop: 'var(--space-xs)', whiteSpace: 'pre-wrap' }}>
+                                            {current.instructions}
+                                        </p>
                                     </div>
                                 )}
 
-                                {/* ── Attachment download ── */}
+                                {/* ── Teacher attachment ── */}
                                 {current.attachmentUrl && current.attachmentUrl.trim() !== '' && (
                                     <div className="assignment-attachment">
                                         <div className="assignment-attachment__icon">
-                                            {current.attachmentUrl.endsWith('.pdf')  ? '📄' :
-                                                current.attachmentUrl.match(/\.(jpg|jpeg|png|gif)$/i) ? '🖼' :
-                                                    current.attachmentUrl.match(/\.(doc|docx)$/i) ? '📝' :
-                                                        current.attachmentUrl.match(/\.(ppt|pptx)$/i) ? '📊' :
-                                                            current.attachmentUrl.match(/\.(xls|xlsx)$/i) ? '📈' :
-                                                                current.attachmentUrl.match(/\.zip$/i)        ? '🗜' :
-                                                                    '📎'}
+                                            {FILE_ICON(current.attachmentUrl)}
                                         </div>
                                         <div className="assignment-attachment__info">
-            <span className="assignment-attachment__label">
-                📎 Attachment from teacher
-            </span>
+                                            <span className="assignment-attachment__label">
+                                                📎 Attachment from teacher
+                                            </span>
                                             <span className="assignment-attachment__name">
-                {(() => {
-                    try {
-                        const raw = current.attachmentUrl.split('/').pop();
-                        return decodeURIComponent(raw.replace(/^\d+-/, ''));
-                    } catch {
-                        return current.attachmentUrl.split('/').pop();
-                    }
-                })()}
-            </span>
+                                                {getFileName(current.attachmentUrl)}
+                                            </span>
                                         </div>
-                                    <a
-                                        href={current.attachmentUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="btn btn-primary btn-sm"
-                                        download
+                                        <a
+                                            href={current.attachmentUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="btn btn-primary btn-sm"
+                                            download
                                         >
-                                        ⬇ Download
-                                    </a>
+                                            ⬇ Download
+                                        </a>
                                     </div>
-                                    )}
+                                )}
 
                                 <hr className="divider" />
 
-                                {/* ── Submission section ── */}
+                                {/* ══ SUBMISSION SECTION ══ */}
+
                                 {currentSubmission ? (
-                                    /* Already submitted */
+                                    /* ── Already submitted ── */
                                     <div className="submission-result">
                                         <div className="submission-result__header">
                                             <span>Your submission</span>
@@ -390,13 +489,18 @@ export default function AssignmentList() {
                                             </div>
                                         )}
 
-                                        <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: 'var(--space-md)' }}>
+                                        <div style={{
+                                            fontSize: '0.8125rem',
+                                            color: 'var(--color-text-muted)',
+                                            marginBottom: 'var(--space-md)',
+                                        }}>
                                             Submitted: {new Date(currentSubmission.submittedAt).toLocaleDateString('en-GB', {
                                             day: 'numeric', month: 'long', year: 'numeric',
                                             hour: '2-digit', minute: '2-digit',
                                         })}
                                         </div>
 
+                                        {/* Student's text answer */}
                                         {currentSubmission.textAnswer && (
                                             <div className="submission-result__answer">
                                                 <strong>Your answer:</strong>
@@ -406,19 +510,52 @@ export default function AssignmentList() {
                                             </div>
                                         )}
 
+                                        {/* Student's submitted file */}
+                                        {currentSubmission.fileUrl && (
+                                            <div className="submission-file-card">
+                                                <div className="submission-file-card__icon">
+                                                    {FILE_ICON(currentSubmission.fileUrl)}
+                                                </div>
+                                                <div className="submission-file-card__info">
+                                                    <span className="submission-file-card__label">
+                                                        Your submitted file
+                                                    </span>
+                                                    <span className="submission-file-card__name">
+                                                        {getFileName(currentSubmission.fileUrl)}
+                                                    </span>
+                                                </div>
+                                                <a
+                                                    href={currentSubmission.fileUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="btn btn-outline btn-sm"
+                                                    download
+                                                >
+                                                    ⬇ View file
+                                                </a>
+                                            </div>
+                                        )}
+
+                                        {/* Grade */}
                                         {currentSubmission.status === 'graded' && (
                                             <div className="submission-result__grade">
                                                 <div className="grade-score">
-                                                    <span className="grade-score__value">{currentSubmission.marks}</span>
-                                                    <span className="grade-score__total">/ {current.totalMarks}</span>
+                                                    <span className="grade-score__value">
+                                                        {currentSubmission.marks}
+                                                    </span>
+                                                    <span className="grade-score__total">
+                                                        / {current.totalMarks}
+                                                    </span>
                                                     <span style={{
                                                         marginLeft: 'var(--space-sm)',
-                                                        fontSize: '0.875rem',
-                                                        color: currentSubmission.marks >= current.passingMarks ? '#059669' : '#DC2626',
-                                                        fontWeight: 600,
+                                                        fontSize: '0.9375rem',
+                                                        fontWeight: 700,
+                                                        color: currentSubmission.marks >= current.passingMarks
+                                                            ? '#059669' : '#DC2626',
                                                     }}>
                                                         ({Math.round((currentSubmission.marks / current.totalMarks) * 100)}%)
-                                                        — {currentSubmission.marks >= current.passingMarks ? 'Pass' : 'Fail'}
+                                                        &nbsp;—&nbsp;
+                                                        {currentSubmission.marks >= current.passingMarks ? '✓ Pass' : '✗ Fail'}
                                                     </span>
                                                 </div>
 
@@ -432,10 +569,21 @@ export default function AssignmentList() {
                                                 )}
                                             </div>
                                         )}
+
+                                        {currentSubmission.status === 'submitted' && (
+                                            <p style={{
+                                                marginTop: 'var(--space-md)',
+                                                fontSize: '0.875rem',
+                                                color: 'var(--color-text-muted)',
+                                                fontStyle: 'italic',
+                                            }}>
+                                                ⏳ Awaiting review from your teacher.
+                                            </p>
+                                        )}
                                     </div>
 
                                 ) : isPast(current.dueDate) && !current.allowLateSubmission ? (
-                                    /* Past due, no late allowed */
+                                    /* ── Submissions closed ── */
                                     <div className="empty-state" style={{ paddingTop: 'var(--space-lg)' }}>
                                         <div className="empty-state__icon">🔒</div>
                                         <p style={{ fontWeight: 600 }}>Submissions closed</p>
@@ -445,7 +593,7 @@ export default function AssignmentList() {
                                     </div>
 
                                 ) : (
-                                    /* Submit form */
+                                    /* ── Submit form ── */
                                     <div className="submission-form">
                                         <h3 className="submission-form__title">
                                             Submit your answer
@@ -456,32 +604,111 @@ export default function AssignmentList() {
                                             )}
                                         </h3>
 
-                                        {submitError && (
+                                        {(submitError || assignError) && (
                                             <div className="alert alert-error" style={{ marginBottom: 'var(--space-md)' }}>
-                                                {submitError}
+                                                {submitError || assignError}
                                             </div>
                                         )}
 
                                         <form onSubmit={handleSubmit}>
+
+                                            {/* Text answer */}
                                             <div className="form-group">
-                                                <label className="form-label">Your answer</label>
+                                                <label className="form-label">Written answer</label>
                                                 <textarea
                                                     className="form-input"
-                                                    rows={8}
+                                                    rows={6}
                                                     value={textAnswer}
                                                     onChange={(e) => setTextAnswer(e.target.value)}
                                                     placeholder="Type your answer here… Be thorough and clear."
-                                                    required
                                                     style={{ resize: 'vertical' }}
                                                 />
-                                                <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                                                <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 4, textAlign: 'right' }}>
                                                     {textAnswer.length} characters
                                                 </p>
                                             </div>
+
+                                            {/* File upload */}
+                                            <div className="form-group">
+                                                <label className="form-label">
+                                                    Attach a file
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginLeft: 8, fontWeight: 400 }}>
+                                                        (optional — PDF, DOCX, images, ZIP · max 20 MB)
+                                                    </span>
+                                                </label>
+
+                                                {subFileUrl ? (
+                                                    /* File uploaded — show preview */
+                                                    <div className="submission-upload-preview">
+                                                        <div className="submission-upload-preview__icon">
+                                                            {FILE_ICON(subFileUrl)}
+                                                        </div>
+                                                        <div className="submission-upload-preview__info">
+                                                            <span className="submission-upload-preview__name">
+                                                                {getFileName(subFileUrl)}
+                                                            </span>
+                                                            <span className="submission-upload-preview__ready">
+                                                                ✓ Ready to submit
+                                                            </span>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-danger btn-sm"
+                                                            onClick={handleRemoveSubFile}
+                                                        >
+                                                            Remove
+                                                        </button>
+                                                    </div>
+                                                ) : uploading ? (
+                                                    /* Uploading progress */
+                                                    <div className="submission-upload-progress">
+                                                        <div className="submission-upload-progress__label">
+                                                            ⬆ Uploading {subFile?.name}…
+                                                        </div>
+                                                        <div className="submission-upload-progress__bar">
+                                                            <div
+                                                                className="submission-upload-progress__fill"
+                                                                style={{ width: `${uploadPct}%` }}
+                                                            />
+                                                        </div>
+                                                        <div className="submission-upload-progress__pct">
+                                                            {uploadPct}%
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    /* Drop zone */
+                                                    <label className="submission-upload-zone">
+                                                        <input
+                                                            type="file"
+                                                            accept={SUBMISSION_TYPES.join(',')}
+                                                            onChange={handleSubFileChange}
+                                                            style={{ display: 'none' }}
+                                                        />
+                                                        <span className="submission-upload-zone__icon">📎</span>
+                                                        <span className="submission-upload-zone__text">
+                                                            Click to attach a file
+                                                        </span>
+                                                    </label>
+                                                )}
+
+                                                {uploadError && (
+                                                    <div className="file-upload__error" style={{ marginTop: 'var(--space-xs)' }}>
+                                                        ⚠ {uploadError}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Validation hint */}
+                                            {!textAnswer.trim() && !subFileUrl && (
+                                                <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: 'var(--space-md)' }}>
+                                                    ℹ You can submit a written answer, a file, or both.
+                                                </p>
+                                            )}
+
                                             <button
                                                 type="submit"
                                                 className="btn btn-primary"
-                                                disabled={submitting || !textAnswer.trim()}
+                                                disabled={submitting || uploading || (!textAnswer.trim() && !subFileUrl)}
                                             >
                                                 {submitting
                                                     ? <><span className="spinner"></span> Submitting…</>
