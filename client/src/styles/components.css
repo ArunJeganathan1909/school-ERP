@@ -417,3 +417,34 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
+/* ── Badge warning (pending submissions) ── */
+.badge-warning {
+    background: #FFFBEB;
+    color: #D97706;
+}
+
+/* ── Indigo tinted button (Submissions action) ── */
+.btn-indigo {
+    background: #EEF2FF;
+    color: #4F46E5;
+    border: 1.5px solid #C7D2FE;
+    font-weight: 600;
+}
+.btn-indigo:hover:not(:disabled) {
+    background: #E0E7FF;
+    border-color: #A5B4FC;
+    box-shadow: var(--shadow-sm);
+}
+
+/* ── Edit grade button ── */
+.btn-edit-grade {
+    background: transparent;
+    color: var(--color-text-secondary);
+    border: 1.5px solid var(--color-border);
+    font-weight: 500;
+}
+.btn-edit-grade:hover:not(:disabled) {
+    background: var(--color-bg);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}

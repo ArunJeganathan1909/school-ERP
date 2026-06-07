@@ -9,7 +9,7 @@ const submissionSchema = new mongoose.Schema(
         },
         student: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'Student',
+            ref: 'User',          // ← was 'Student'; User is the correct registered model
             required: true
         },
         course: {

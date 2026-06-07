@@ -97,7 +97,18 @@ exports.gradeSubmission = async (req, res) => {
             message: `Your submission for "${submission.assignment?.title || 'an assignment'}" has been graded.`,
             link: '/assignments',
         });
-        
+
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+// DELETE /api/submissions/:id — teacher/admin: remove a single submission
+exports.deleteSubmission = async (req, res) => {
+    try {
+        const submission = await Submission.findByIdAndDelete(req.params.id);
+        if (!submission) return res.status(404).json({ success: false, message: 'Submission not found' });
+        res.status(200).json({ success: true, message: 'Submission deleted' });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
