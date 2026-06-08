@@ -1,6 +1,8 @@
-const Assignment = require('../models/Assignment');
-const Submission = require('../models/Submission');
-const Subject    = require('../models/Subject');
+const Assignment  = require('../models/Assignment');
+const Submission  = require('../models/Submission');
+const Subject     = require('../models/Subject');
+const Enrollment  = require('../models/Enrollment');
+const { notify }  = require('../socket/socketHelpers');
 
 // GET /api/assignments
 exports.getAssignments = async (req, res) => {
@@ -91,6 +93,36 @@ exports.createAssignment = async (req, res) => {
             .populate('teacher', 'name');
 
         res.status(201).json({ success: true, assignment: populated });
+
+        // ── Notify all active students enrolled in this course ──
+        // Done after responding so it never delays the API reply
+        try {
+            const enrollments = await Enrollment.find({
+                course: populated.course._id,
+                status: 'active',
+            }).select('student');
+
+            const studentIds = enrollments.map((e) => e.student);
+
+            if (studentIds.length > 0) {
+                const courseName  = populated.course?.title  || 'your course';
+                const subjectName = populated.subject?.name  || null;
+                const due         = new Date(populated.dueDate).toLocaleDateString('en-GB', {
+                    day: 'numeric', month: 'short', year: 'numeric',
+                });
+
+                await notify({
+                    recipientId: studentIds,
+                    type:    'assignment_due',
+                    title:   '📝 New assignment posted',
+                    message: `"${populated.title}" has been posted${subjectName ? ` for ${subjectName}` : ''} in ${courseName}. Due: ${due}.`,
+                    link:    '/assignments',
+                });
+            }
+        } catch (notifErr) {
+            // Never let notification failure surface to the client
+            console.error('Assignment notification error:', notifErr.message);
+        }
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
