@@ -1,11 +1,10 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-const signToken = (id, role) => {
-    return jwt.sign({id, role}, process.env.JWT_SECRET, {
-        expiresIn: process.env.JWT_EXPIRES_IN,
-    });
-};
+// authController.js — fix signToken and sendTokenResponse
+
+const signToken = (id, role) =>
+    jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
 
 const sendTokenResponse = (user, statusCode, res) => {
     const token = signToken(user._id, user.role);
@@ -13,13 +12,13 @@ const sendTokenResponse = (user, statusCode, res) => {
         success: true,
         token,
         user: {
-            _id: user._id,   // ← change 'id' to '_id'
+            _id: user._id,   // ← was 'id', change to '_id'
             name: user.name,
             email: user.email,
-            role: user.role
+            role: user.role,
         },
-    })
-}
+    });
+};
 
 // POST /api/auth/register
 exports.register = async (req, res) => {

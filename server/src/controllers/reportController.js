@@ -222,8 +222,9 @@ exports.getTeacherReport = async (req, res) => {
 
         const [submissions, attendanceBySubject, quizResults] = await Promise.all([
             Submission.find({ assignment: { $in: assignmentIds } })
-                .populate('student', 'name')
-                .populate('assignment', 'title totalMarks'),
+                .populate('student', 'name email profilePhoto')
+                .populate('assignment', 'title totalMarks')
+                .sort({ submittedAt: -1 }),
 
             Attendance.aggregate([
                 { $match: { markedBy: require('mongoose').Types.ObjectId.createFromHexString(String(teacherId)) } },
@@ -268,7 +269,7 @@ exports.getTeacherReport = async (req, res) => {
                 avgClassScore,
                 attendanceBySubject,
                 quizSummary,
-                recentSubmissions: submissions.slice(0, 20),
+                recentSubmissions: submissions.slice(0, 20),   // already sorted by submittedAt desc
             },
         });
     } catch (err) {

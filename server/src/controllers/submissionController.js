@@ -85,7 +85,8 @@ exports.gradeSubmission = async (req, res) => {
                 },
             },
             { new: true }
-        ).populate('student', 'name email');
+        ).populate('student', 'name email')
+            .populate('assignment', 'title');
 
         if (!submission) return res.status(404).json({ success: false, message: 'Submission not found' });
 
