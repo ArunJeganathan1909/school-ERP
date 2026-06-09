@@ -65,3 +65,38 @@
 .attendance-status-btn.active {
     font-weight: 600;
 }
+
+/* Auto-filled course display */
+.attendance-course-display {
+    border: 1.5px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 10px var(--space-md);
+    font-size: 0.875rem;
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+/* Info pill below the controls */
+.attendance-subject-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--color-primary-light);
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    border-left: 3px solid var(--color-primary);
+}
+
+.attendance-subject-info__icon {
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.attendance-subject-info strong {
+    color: var(--color-primary);
+}

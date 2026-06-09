@@ -5,7 +5,7 @@ const Enrollment = require('../models/Enrollment');
 exports.markAttendance = async (req, res) => {
     try {
         const { subjectId, courseId, date, records, sessionType} = req.body;
-    //     records = [{ studentId, status, remarks }]
+        //     records = [{ studentId, status, remarks }]
 
         const attendanceData = new Date(date);
 
@@ -59,7 +59,7 @@ exports.getSessionAttendance = async (req, res) => {
         if (date) {
             const d = new Date(date);
             const next = new Date(d);
-            next.setData(next.getDate() + 1);
+            next.setDate(next.getDate() + 1);
             filter.date = { $gte: d, $lt: next };
         }
 
@@ -87,7 +87,7 @@ exports.getStudentAttendance = async (req, res) => {
         const { courseId, subjectId, from, to } = req.query;
         const studentId = req.params.studentId;
 
-    //     Students can only see their own
+        //     Students can only see their own
         if (req.user.role === 'student' && String(req.user._id) !== String(studentId)) {
             return res.status(403).json({
                 success: false,
@@ -109,7 +109,7 @@ exports.getStudentAttendance = async (req, res) => {
             .populate('course', 'title code')
             .sort({ date: -1 });
 
-    //     Calculate summary per subject
+        //     Calculate summary per subject
         const summary = {};
         records.forEach((r) => {
             const key = String(r.subject?._id);
@@ -162,7 +162,7 @@ exports.getCourseReport = async (req, res) => {
             .populate('student', 'name email')
             .populate('subject', 'name code');
 
-    //     Group by student
+        //     Group by student
         const byStudent = {};
         records.forEach((r) => {
             const sid = String(r.student?._id);
@@ -204,3 +204,61 @@ exports.getMyAttendance = async (req, res) => {
     req.params.studentId = String(req.user._id);
     return exports.getStudentAttendance(req, res);
 }
+
+// GET /api/attendances/enrolled-students?subjectId=&date= — teacher: get students
+// enrolled in the course that owns this subject, with existing attendance pre-loaded
+exports.getEnrolledStudentsBySubject = async (req, res) => {
+    try {
+        const { subjectId, date } = req.query;
+
+        if (!subjectId) {
+            return res.status(400).json({ success: false, message: 'subjectId is required' });
+        }
+
+        const Subject    = require('../models/Subject');
+        const Enrollment = require('../models/Enrollment');
+
+        // 1. Find the subject to get its course
+        const subject = await Subject.findById(subjectId);
+        if (!subject) {
+            return res.status(404).json({ success: false, message: 'Subject not found' });
+        }
+
+        // 2. Find all active enrollments for that course
+        const enrollments = await Enrollment.find({
+            course: subject.course,
+            status: 'active',
+        }).populate('student', 'name email profilePhoto');
+
+        const students = enrollments.map(e => e.student);
+
+        // 3. If a date is provided, also return existing attendance records for that day
+        let existingRecords = [];
+        if (date) {
+            const d    = new Date(date);
+            const next = new Date(d);
+            next.setDate(next.getDate() + 1);
+
+            existingRecords = await Attendance.find({
+                subject: subjectId,
+                date: { $gte: d, $lt: next },
+            }).lean();
+        }
+
+        // Build a map: studentId → attendance record
+        const recordMap = {};
+        existingRecords.forEach(r => {
+            recordMap[String(r.student)] = r;
+        });
+
+        res.status(200).json({
+            success:         true,
+            courseId:        subject.course,
+            students,
+            existingRecords: recordMap,
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

@@ -19,7 +19,7 @@ const subjectSchema = new mongoose.Schema(
         },
         code: {
             type: String,
-            response: [true, 'Subject code is required'],
+            required: [true, 'Subject code is required'],
             uppercase: true,
             trim: true,
         },
