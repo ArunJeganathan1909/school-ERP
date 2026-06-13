@@ -42,6 +42,7 @@ import TeacherReport  from './pages/reports/TeacherReport';
 import ManageUsers from "./pages/admin/ManageUsers.jsx";
 import LandingPage from "./pages/landing/LandingPage.jsx";
 import ManageSubjects from "./pages/admin/ManageSubjects";
+import LessonList from "./pages/lms/LessonList.jsx";
 
 export default function App() {
   const dispatch = useDispatch();
@@ -66,6 +67,7 @@ export default function App() {
           <Route path="/courses/:id" element={<PrivateRoute><CourseDetail /></PrivateRoute>} />
 
           {/* Phase 4 — LMS student routes */}
+          <Route path="/lessons" element={<RoleRoute roles={['student','teacher','admin']}><LessonList /></RoleRoute>} />
           <Route path="/lessons/:id"    element={<RoleRoute roles={['student','teacher','admin']}><LessonViewer /></RoleRoute>} />
           <Route path="/assignments"    element={<RoleRoute roles={['student']}><AssignmentList /></RoleRoute>} />
           <Route path="/quizzes/:id"    element={<RoleRoute roles={['student']}><QuizPlayer /></RoleRoute>} />

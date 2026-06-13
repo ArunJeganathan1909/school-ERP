@@ -12,6 +12,7 @@ const NAV_ITEMS = {
         { label: 'Fees',          icon: '💳', path: '/student/fees' },
         { label: 'Announcements', icon: '📢', path: '/announcements' },
         { label: 'Timetable',     icon: '🗓', path: '/student/timetable' },
+        { label: 'Lessons',  icon: '📚', path: '/lessons',  roles: ['student'] },
     ],
     teacher: [
         { label: 'Dashboard',     icon: '⊞', path: '/teacher/dashboard' },

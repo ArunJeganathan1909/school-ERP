@@ -57,6 +57,6 @@ const lessonSchema = new mongoose.Schema(
 
 lessonSchema.index({ subject: 1, order: 1 });
 lessonSchema.index({ course: 1 });
-lessonSchema.index({ title: 'text', content: 'text' });
+// lessonSchema.index({ title: 'text', content: 'text' });
 
 module.exports = mongoose.model('Lesson', lessonSchema);

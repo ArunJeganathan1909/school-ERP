@@ -1,0 +1,135 @@
+/* ── Course picker grid ── */
+.ll-course-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    max-width: 680px;
+}
+
+.ll-course-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-lg);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    text-align: left;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+    width: 100%;
+}
+
+.ll-course-card:hover {
+    border-color: var(--color-primary);
+    box-shadow: 0 4px 16px rgba(79, 70, 229, 0.10);
+    transform: translateY(-1px);
+}
+
+.ll-course-card__icon {
+    font-size: 2rem;
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-primary-light);
+    border-radius: var(--radius-md);
+}
+
+.ll-course-card__body {
+    flex: 1;
+    min-width: 0;
+}
+
+.ll-course-card__title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 2px;
+}
+
+.ll-course-card__sub {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+}
+
+.ll-course-card__meta {
+    font-size: 0.8125rem;
+    color: var(--color-primary);
+    font-weight: 600;
+    flex-shrink: 0;
+    background: var(--color-primary-light);
+    padding: 4px 12px;
+    border-radius: var(--radius-full);
+}
+
+.ll-course-card__arrow {
+    font-size: 1.125rem;
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+    transition: color var(--transition-fast), transform var(--transition-fast);
+}
+
+.ll-course-card:hover .ll-course-card__arrow {
+    color: var(--color-primary);
+    transform: translateX(3px);
+}
+
+/* ── Split view ── */
+.ll-split {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* ── Left sidebar ── */
+.ll-sidebar {
+    border-right: 1px solid var(--color-border);
+    overflow-y: auto;
+    padding: var(--space-md);
+    background: var(--color-bg);
+}
+
+/* ── Right content pane ── */
+.ll-content {
+    overflow-y: auto;
+    padding: var(--space-xl);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+}
+
+/* ── Lesson header inside content pane ── */
+.ll-lesson-header {
+    padding-bottom: var(--space-lg);
+    border-bottom: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.ll-lesson-title {
+    font-size: 1.375rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    line-height: 1.3;
+}
+
+.ll-lesson-body {
+    max-width: 780px;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .ll-split {
+        grid-template-columns: 1fr;
+    }
+    .ll-sidebar {
+        border-right: none;
+        border-bottom: 1px solid var(--color-border);
+        max-height: 240px;
+    }
+}

@@ -78,3 +78,10 @@ export function getPathFromUrl(url, bucket = 'assignments') {
         return null;
     }
 }
+
+/**
+ * Upload a lesson file (PDF, video, slide, etc.) → 'lessons' bucket
+ */
+export async function uploadLessonFile(file) {
+    return uploadToBucket('lessons', file);
+}
