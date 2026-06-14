@@ -1,32 +1,19 @@
 const express = require('express');
 const router  = express.Router();
-const {
-    createTimetable,
-    updateTimetable,
-    updateSlot,
-    deleteTimetable,
-    getAllTimetables,
-    getTimetable,
-    getMyTimetableAsStudent,
-    getMyTimetableAsTeacher,
-} = require('../controllers/timetableController');
-const { protect }    = require('../middleware/authMiddleware');
-const { authorize }  = require('../middleware/roleMiddleware');
+const c       = require('../controllers/timetableController');
+const { protect }   = require('../middleware/authMiddleware');
+const { authorize } = require('../middleware/roleMiddleware');
 
-// ── student / teacher personal views ────────────────────────────────────────
-// Must come BEFORE /:id so Express doesn't treat "my" as an id param
-router.get('/my/student', protect, authorize('student'), getMyTimetableAsStudent);
-router.get('/my/teacher', protect, authorize('teacher'), getMyTimetableAsTeacher);
+// Personal views — must come before /:id
+router.get('/my/student',  protect, authorize('student'), c.getMyTimetableAsStudent);
+router.get('/my/teacher',  protect, authorize('teacher', 'admin'), c.getMyTimetableAsTeacher);
 
-// ── admin: full CRUD on timetable structures ─────────────────────────────────
-router.get('/',    protect, authorize('admin'), getAllTimetables);
-router.post('/',   protect, authorize('admin'), createTimetable);
-
-router.get('/:id',    protect, authorize('admin', 'teacher', 'student'), getTimetable);
-router.put('/:id',    protect, authorize('admin'), updateTimetable);
-router.delete('/:id', protect, authorize('admin'), deleteTimetable);
-
-// ── admin: assign / clear a subject in a specific slot ──────────────────────
-router.put('/:id/slots', protect, authorize('admin'), updateSlot);
+// General
+router.get('/',            protect, authorize('admin', 'teacher'), c.getAllTimetables);
+router.post('/',           protect, authorize('admin'), c.createTimetable);
+router.get('/:id',         protect, c.getTimetable);
+router.put('/:id',         protect, authorize('admin'), c.updateTimetable);
+router.put('/:id/slots',   protect, authorize('admin'), c.updateSlot);
+router.delete('/:id',      protect, authorize('admin'), c.deleteTimetable);
 
 module.exports = router;

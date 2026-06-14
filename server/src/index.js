@@ -48,6 +48,10 @@ app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/announcements', require('./routes/announcementRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));
 app.use('/api/timetables', require('./routes/timetableRoutes'));
+app.use('/api/academic-years',    require('./routes/academicYearRoutes'));
+app.use('/api/grades',            require('./routes/gradeRoutes'));
+app.use('/api/sections',          require('./routes/sectionRoutes'));
+app.use('/api/student-sections',  require('./routes/studentSectionRoutes'));
 
 // Health check
 app.get('/', (req, res) =>

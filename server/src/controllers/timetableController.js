@@ -1,41 +1,43 @@
-const Timetable   = require('../models/Timetable');
-const Enrollment  = require('../models/Enrollment');
-const Subject     = require('../models/Subject');
+const Timetable      = require('../models/Timetable');
+const StudentSection = require('../models/StudentSection');
+const Subject        = require('../models/Subject');
+const Section        = require('../models/Section');
 
-// ─── helpers ────────────────────────────────────────────────────────────────
+// ── helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Build a fully-populated timetable with resolved subject + teacher details.
- */
 const populateTimetable = (query) =>
     query
-        .populate('course', 'title code department')
-        .populate('createdBy', 'name email')
-        .populate('slots.subject', 'name code teacher credits')
+        .populate('section',      'name room')
+        .populate('grade',        'name gradeNumber stream')
+        .populate('academicYear', 'name currentSemester')
+        .populate('course',       'title code')
+        .populate('createdBy',    'name email')
         .populate({
-            path: 'slots.subject',
+            path:     'slots.subject',
+            select:   'name code teacher credits',
             populate: { path: 'teacher', select: 'name email' },
         });
 
-// ─── admin: create timetable structure ──────────────────────────────────────
+// ── admin: create timetable for a section ────────────────────────────────────
 
 // POST /api/timetables
-// Body: { course, term, workingDays, periods: [{number, startTime, endTime, label?, isBreak?}] }
 exports.createTimetable = async (req, res) => {
     try {
-        const { course, term, workingDays, periods } = req.body;
+        const {
+            section, grade, academicYear, semester,
+            term, workingDays, periods,
+            course,   // for legacy course-based
+        } = req.body;
 
-        // Validate periods are in order with unique numbers
-        const periodNumbers = periods.map((p) => p.number);
-        if (new Set(periodNumbers).size !== periodNumbers.length) {
-            return res.status(400).json({
-                success: false,
-                message: 'Period numbers must be unique',
-            });
+        // Validate period numbers unique
+        const nums = periods.map((p) => p.number);
+        if (new Set(nums).size !== nums.length) {
+            return res.status(400).json({ success: false, message: 'Period numbers must be unique' });
         }
 
-        // Pre-build empty slots for every (day × period) combination
-        const days = workingDays || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+        const days = workingDays || ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+
+        // Build empty slot grid
         const slots = [];
         for (const day of days) {
             for (const period of periods) {
@@ -50,7 +52,11 @@ exports.createTimetable = async (req, res) => {
         }
 
         const timetable = await Timetable.create({
-            course,
+            section:      section      || null,
+            grade:        grade        || null,
+            academicYear: academicYear || null,
+            semester:     semester     || 1,
+            course:       course       || null,
             term,
             workingDays: days,
             periods,
@@ -59,23 +65,20 @@ exports.createTimetable = async (req, res) => {
         });
 
         const populated = await populateTimetable(Timetable.findById(timetable._id));
-
         res.status(201).json({ success: true, timetable: populated });
     } catch (err) {
         if (err.code === 11000) {
             return res.status(400).json({
                 success: false,
-                message: 'A timetable for this course and term already exists',
+                message: 'A timetable already exists for this section and semester',
             });
         }
         res.status(500).json({ success: false, message: err.message });
     }
 };
 
-// ─── admin: assign a subject to a slot ──────────────────────────────────────
-
 // PUT /api/timetables/:id/slots
-// Body: { day, period, subjectId }   (subjectId null = clear the slot)
+// Assign or clear a subject in a slot
 exports.updateSlot = async (req, res) => {
     try {
         const { day, period, subjectId } = req.body;
@@ -85,7 +88,6 @@ exports.updateSlot = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Timetable not found' });
         }
 
-        // Validate day is a working day for this timetable
         if (!timetable.workingDays.includes(day)) {
             return res.status(400).json({
                 success: false,
@@ -93,12 +95,11 @@ exports.updateSlot = async (req, res) => {
             });
         }
 
-        // Validate period exists in structure
         const periodDef = timetable.periods.find((p) => p.number === Number(period));
         if (!periodDef) {
             return res.status(400).json({
                 success: false,
-                message: `Period ${period} is not defined in this timetable`,
+                message: `Period ${period} is not defined`,
             });
         }
 
@@ -109,36 +110,32 @@ exports.updateSlot = async (req, res) => {
             });
         }
 
-        // Validate subject belongs to the same course
-        if (subjectId) {
+        // Validate subject belongs to same section (if section-based)
+        if (subjectId && timetable.section) {
             const subject = await Subject.findById(subjectId);
             if (!subject) {
                 return res.status(404).json({ success: false, message: 'Subject not found' });
             }
-            if (String(subject.course) !== String(timetable.course)) {
+            if (subject.section && String(subject.section) !== String(timetable.section)) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Subject does not belong to this timetable\'s course',
+                    message: 'Subject does not belong to this section',
                 });
-            }
-
-            // Warn if the same subject already exists on the same day
-            const dayConflict = timetable.slots.find(
-                (s) => s.day === day && String(s.subject) === String(subjectId) && s.period !== Number(period)
-            );
-            if (dayConflict) {
-                // We allow it but surface a warning in the response
-                // (some schools allow double-periods)
             }
         }
 
-        // Update the matching slot (or insert if somehow missing)
         const slotIdx = timetable.slots.findIndex(
             (s) => s.day === day && s.period === Number(period)
         );
 
         if (slotIdx === -1) {
-            timetable.slots.push({ day, period: Number(period), subject: subjectId || null });
+            timetable.slots.push({
+                day,
+                period:  Number(period),
+                subject: subjectId || null,
+                label:   '',
+                isBreak: false,
+            });
         } else {
             timetable.slots[slotIdx].subject = subjectId || null;
             timetable.slots[slotIdx].label   = '';
@@ -147,44 +144,29 @@ exports.updateSlot = async (req, res) => {
         await timetable.save();
 
         const populated = await populateTimetable(Timetable.findById(timetable._id));
-
         res.status(200).json({ success: true, timetable: populated });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
 };
-
-// ─── admin: update timetable meta (term, workingDays, periods) ──────────────
 
 // PUT /api/timetables/:id
 exports.updateTimetable = async (req, res) => {
     try {
-        const { term, workingDays, periods, isActive } = req.body;
-        const update = {};
-        if (term)        update.term        = term;
-        if (workingDays) update.workingDays = workingDays;
-        if (periods)     update.periods     = periods;
-        if (typeof isActive === 'boolean') update.isActive = isActive;
-
         const timetable = await Timetable.findByIdAndUpdate(
             req.params.id,
-            { $set: update },
+            { $set: req.body },
             { new: true, runValidators: true }
         );
-
         if (!timetable) {
             return res.status(404).json({ success: false, message: 'Timetable not found' });
         }
-
         const populated = await populateTimetable(Timetable.findById(timetable._id));
-
         res.status(200).json({ success: true, timetable: populated });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
 };
-
-// ─── admin: delete timetable ─────────────────────────────────────────────────
 
 // DELETE /api/timetables/:id
 exports.deleteTimetable = async (req, res) => {
@@ -199,15 +181,16 @@ exports.deleteTimetable = async (req, res) => {
     }
 };
 
-// ─── admin: list all timetables ──────────────────────────────────────────────
-
 // GET /api/timetables
 exports.getAllTimetables = async (req, res) => {
     try {
-        const { course, term, isActive } = req.query;
+        const { section, grade, academicYear, semester, course, isActive } = req.query;
         const filter = {};
-        if (course)   filter.course   = course;
-        if (term)     filter.term     = term;
+        if (section)      filter.section      = section;
+        if (grade)        filter.grade        = grade;
+        if (academicYear) filter.academicYear = academicYear;
+        if (semester)     filter.semester     = Number(semester);
+        if (course)       filter.course       = course;
         if (isActive !== undefined) filter.isActive = isActive === 'true';
 
         const timetables = await populateTimetable(
@@ -219,8 +202,6 @@ exports.getAllTimetables = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
-
-// ─── admin/teacher/student: get one timetable by id ─────────────────────────
 
 // GET /api/timetables/:id
 exports.getTimetable = async (req, res) => {
@@ -235,63 +216,71 @@ exports.getTimetable = async (req, res) => {
     }
 };
 
-// ─── student: view timetable for their enrolled courses ──────────────────────
-
 // GET /api/timetables/my/student
-// Returns all active timetables for courses the student is actively enrolled in.
+// Student sees timetable for their active section and current semester
 exports.getMyTimetableAsStudent = async (req, res) => {
     try {
-        // Find active enrollments for this student
-        const enrollments = await Enrollment.find({
+        const studentSection = await StudentSection.findOne({
             student: req.user._id,
             status:  'active',
-        }).select('course');
+        }).populate({
+            path:     'section',
+            populate: { path: 'academicYear', select: 'currentSemester' },
+        });
 
-        const courseIds = enrollments.map((e) => e.course);
-
-        if (courseIds.length === 0) {
-            return res.status(200).json({ success: true, timetables: [] });
+        if (!studentSection) {
+            return res.status(200).json({
+                success:    true,
+                timetable:  null,
+                message:    'Not assigned to any section',
+            });
         }
 
-        const timetables = await populateTimetable(
-            Timetable.find({ course: { $in: courseIds }, isActive: true })
+        const semester = studentSection.section?.academicYear?.currentSemester || 1;
+
+        const timetable = await populateTimetable(
+            Timetable.findOne({
+                section:  studentSection.section._id,
+                semester,
+                isActive: true,
+            })
         );
 
-        res.status(200).json({ success: true, timetables });
+        res.status(200).json({
+            success:   true,
+            timetable: timetable || null,
+            section:   studentSection,
+            semester,
+        });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
 };
 
-// ─── teacher: view timetable for their assigned subjects ─────────────────────
-
 // GET /api/timetables/my/teacher
-// Returns all active timetables where at least one slot has a subject assigned to this teacher.
+// Teacher sees all timetables containing their subjects
 exports.getMyTimetableAsTeacher = async (req, res) => {
     try {
-        // Find all subjects assigned to this teacher
-        const subjects = await Subject.find({ teacher: req.user._id }).select('_id course');
+        const subjects = await Subject.find({ teacher: req.user._id }).select('_id section grade');
 
         if (subjects.length === 0) {
             return res.status(200).json({ success: true, timetables: [] });
         }
 
-        const subjectIds = subjects.map((s) => s._id);
-        const courseIds  = [...new Set(subjects.map((s) => String(s.course)))];
+        const subjectIds  = subjects.map((s) => s._id);
+        const sectionIds  = [...new Set(subjects.filter((s) => s.section).map((s) => String(s.section)))];
 
-        // Get active timetables for those courses that contain the teacher's subjects
         const timetables = await populateTimetable(
             Timetable.find({
-                course:  { $in: courseIds },
-                isActive: true,
+                section:         { $in: sectionIds },
+                isActive:        true,
                 'slots.subject': { $in: subjectIds },
             })
         );
 
-        // Filter each timetable's slots to only include this teacher's subjects
-        // (keep full grid but mark which ones belong to the teacher)
-        const withTeacherFlag = timetables.map((tt) => {
-            const obj = tt.toObject({ virtuals: true });
+        // Flag which slots belong to this teacher
+        const withFlag = timetables.map((tt) => {
+            const obj = tt.toObject ? tt.toObject({ virtuals: true }) : tt;
             obj.slots = obj.slots.map((slot) => ({
                 ...slot,
                 isMyClass: slot.subject
@@ -301,7 +290,7 @@ exports.getMyTimetableAsTeacher = async (req, res) => {
             return obj;
         });
 
-        res.status(200).json({ success: true, timetables: withTeacherFlag });
+        res.status(200).json({ success: true, timetables: withFlag });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
