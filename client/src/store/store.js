@@ -10,6 +10,7 @@ import feeReducer from "./slices/feeSlice";
 import notificationReducer from "./slices/notificationSlice";
 import announcementReducer from "./slices/announcementSlice";
 import reportReducer from "./slices/reportSlice";
+import timetableReducer from './slices/timetableSlice';
 
 export const store = configureStore({
     reducer: {
@@ -24,5 +25,6 @@ export const store = configureStore({
         notifications: notificationReducer,
         announcements: announcementReducer,
         reports: reportReducer,
+        timetables: timetableReducer,
     },
 });

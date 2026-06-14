@@ -23,6 +23,7 @@ const NAV_ITEMS = {
         { label: 'Attendance',    icon: '✅', path: '/teacher/attendance' },
         { label: 'Grades',        icon: '📊', path: '/teacher/grades' },
         { label: 'Announcements', icon: '📢', path: '/announcements' },
+        { label: 'Timetable',     icon: '🗓', path: '/teacher/timetable' },
     ],
     admin: [
         { label: 'Dashboard',     icon: '⊞', path: '/admin/dashboard' },
@@ -32,6 +33,7 @@ const NAV_ITEMS = {
         { label: 'Fees',          icon: '💳', path: '/admin/fees' },
         { label: 'Announcements', icon: '📢', path: '/announcements' },
         { label: 'Reports',       icon: '📈', path: '/admin/reports' },
+        { label: 'Timetables', icon: '🗓', path: '/admin/timetables' }
     ],
 };
 
