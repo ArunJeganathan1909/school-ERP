@@ -1,30 +1,36 @@
-import { configureStore } from "@reduxjs/toolkit";
-import authReducer from "./slices/authSlice";
-import courseReducer from "./slices/courseSlice";
-import enrollmentReducer from "./slices/enrollmentSlice";
-import lessonReducer from './slices/lessonSlice';
-import assignmentReducer from "./slices/assignmentSlice";
-import quizReducer from "./slices/quizSlice";
-import attendanceReducer from "./slices/attendanceSlice" ;
-import feeReducer from "./slices/feeSlice";
-import notificationReducer from "./slices/notificationSlice";
-import announcementReducer from "./slices/announcementSlice";
-import reportReducer from "./slices/reportSlice";
-import timetableReducer from './slices/timetableSlice';
+import { configureStore } from '@reduxjs/toolkit';
+import authReducer         from './slices/authSlice';
+import courseReducer       from './slices/courseSlice';
+import enrollmentReducer   from './slices/enrollmentSlice';
+import lessonReducer       from './slices/lessonSlice';
+import assignmentReducer   from './slices/assignmentSlice';
+import quizReducer         from './slices/quizSlice';
+import attendanceReducer   from './slices/attendanceSlice';
+import feeReducer          from './slices/feeSlice';
+import notificationReducer from './slices/notificationSlice';
+import announcementReducer from './slices/announcementSlice';
+import reportReducer       from './slices/reportSlice';
+import timetableReducer    from './slices/timetableSlice';
+import academicYearReducer from './slices/academicYearSlice';
+import gradeReducer        from './slices/gradeSlice';
+import sectionReducer      from './slices/sectionSlice';
 
 export const store = configureStore({
     reducer: {
-        auth: authReducer,
-        courses: courseReducer,
-        enrollments: enrollmentReducer,
-        lessons: lessonReducer,
-        assignments: assignmentReducer,
-        quizzes: quizReducer,
-        attendance: attendanceReducer,
-        fees: feeReducer,
+        auth:          authReducer,
+        courses:       courseReducer,
+        enrollments:   enrollmentReducer,
+        lessons:       lessonReducer,
+        assignments:   assignmentReducer,
+        quizzes:       quizReducer,
+        attendance:    attendanceReducer,
+        fees:          feeReducer,
         notifications: notificationReducer,
         announcements: announcementReducer,
-        reports: reportReducer,
-        timetables: timetableReducer,
+        reports:       reportReducer,
+        timetables:    timetableReducer,
+        academicYears: academicYearReducer,
+        grades:        gradeReducer,
+        sections:      sectionReducer,
     },
 });

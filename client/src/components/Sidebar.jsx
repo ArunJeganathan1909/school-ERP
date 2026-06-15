@@ -6,49 +6,48 @@ const NAV_ITEMS = {
     student: [
         { label: 'Dashboard',     icon: '⊞', path: '/student/dashboard' },
         { label: 'My courses',    icon: '📚', path: '/student/courses' },
+        { label: 'Lessons',       icon: '📖', path: '/lessons', roles: ['student'] },
         { label: 'Assignments',   icon: '📝', path: '/assignments' },
         { label: 'Attendance',    icon: '✅', path: '/student/attendance' },
         { label: 'Grades',        icon: '📊', path: '/student/grades' },
         { label: 'Fees',          icon: '💳', path: '/student/fees' },
-        { label: 'Announcements', icon: '📢', path: '/announcements' },
         { label: 'Timetable',     icon: '🗓', path: '/student/timetable' },
-        { label: 'Lessons',  icon: '📚', path: '/lessons',  roles: ['student'] },
+        { label: 'Announcements', icon: '📢', path: '/announcements' },
     ],
     teacher: [
         { label: 'Dashboard',     icon: '⊞', path: '/teacher/dashboard' },
-        { label: 'My classes',    icon: '🎓', path: '/teacher/classes' },
-        { label: 'Subjects',      icon: '📖', path: '/admin/subjects' },   // ← NEW
+        { label: 'Subjects',      icon: '📖', path: '/admin/subjects' },
         { label: 'Lessons',       icon: '📄', path: '/teacher/lessons' },
         { label: 'Assignments',   icon: '📝', path: '/teacher/assignments' },
         { label: 'Attendance',    icon: '✅', path: '/teacher/attendance' },
         { label: 'Grades',        icon: '📊', path: '/teacher/grades' },
-        { label: 'Announcements', icon: '📢', path: '/announcements' },
         { label: 'Timetable',     icon: '🗓', path: '/teacher/timetable' },
+        { label: 'Announcements', icon: '📢', path: '/announcements' },
     ],
     admin: [
-        { label: 'Dashboard',     icon: '⊞', path: '/admin/dashboard' },
-        { label: 'Users',         icon: '👥', path: '/admin/users' },
-        { label: 'Courses',       icon: '📚', path: '/admin/courses' },
-        { label: 'Subjects',      icon: '📖', path: '/admin/subjects' },   // ← NEW
-        { label: 'Fees',          icon: '💳', path: '/admin/fees' },
-        { label: 'Announcements', icon: '📢', path: '/announcements' },
-        { label: 'Reports',       icon: '📈', path: '/admin/reports' },
-        { label: 'Timetables', icon: '🗓', path: '/admin/timetables' }
+        { label: 'Dashboard',      icon: '⊞', path: '/admin/dashboard' },
+        { label: 'Academic years', icon: '📅', path: '/admin/academic-years' },
+        { label: 'Grades',         icon: '🎓', path: '/admin/grades' },
+        { label: 'Sections',       icon: '🏫', path: '/admin/sections' },
+        { label: 'Users',          icon: '👥', path: '/admin/users' },
+        { label: 'Courses',        icon: '📚', path: '/admin/courses' },
+        { label: 'Subjects',       icon: '📖', path: '/admin/subjects' },
+        { label: 'Timetables',     icon: '🗓', path: '/admin/timetables' },
+        { label: 'Fees',           icon: '💳', path: '/admin/fees' },
+        { label: 'Announcements',  icon: '📢', path: '/announcements' },
+        { label: 'Reports',        icon: '📈', path: '/admin/reports' },
     ],
 };
 
 export default function Sidebar() {
     const { user } = useSelector((s) => s.auth);
-    const dispatch = useDispatch();
-    const navigate = useNavigate();
+    const dispatch  = useDispatch();
+    const navigate  = useNavigate();
 
-    const items = NAV_ITEMS[user?.role] || [];
-    const initials = user?.name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+    const items    = NAV_ITEMS[user?.role] || [];
+    const initials = user?.name?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
 
-    const handleLogout = () => {
-        dispatch(logout());
-        navigate('/login');
-    };
+    const handleLogout = () => { dispatch(logout()); navigate('/login'); };
 
     return (
         <aside className="sidebar">
@@ -66,9 +65,7 @@ export default function Sidebar() {
                     <NavLink
                         key={item.path}
                         to={item.path}
-                        className={({ isActive }) =>
-                            `sidebar__item${isActive ? ' active' : ''}`
-                        }
+                        className={({ isActive }) => `sidebar__item${isActive ? ' active' : ''}`}
                     >
                         <span className="sidebar__item-icon">{item.icon}</span>
                         {item.label}
@@ -83,9 +80,7 @@ export default function Sidebar() {
                         <div className="sidebar__user-name">{user?.name}</div>
                         <div className="sidebar__user-role">{user?.role}</div>
                     </div>
-                    <button className="sidebar__logout" onClick={handleLogout} title="Sign out">
-                        ⏻
-                    </button>
+                    <button className="sidebar__logout" onClick={handleLogout} title="Sign out">⏻</button>
                 </div>
             </div>
         </aside>

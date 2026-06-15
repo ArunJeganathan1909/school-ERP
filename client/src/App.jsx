@@ -45,6 +45,9 @@ import ManageSubjects from "./pages/admin/ManageSubjects";
 import LessonList from "./pages/lms/LessonList.jsx";
 import TimetableManager from "./pages/admin/TimetableManager.jsx";
 import TimetableViewer from "./pages/shared/TimetableViewer.jsx";
+import ManageSections from "./pages/admin/ManageSections.jsx";
+import ManageAcademicYears from "./pages/admin/ManageAcademicYears.jsx";
+import ManageGrades from "./pages/admin/ManageGrades.jsx";
 
 export default function App() {
   const dispatch = useDispatch();
@@ -97,6 +100,13 @@ export default function App() {
 
           {/* Phase 8 */}
           <Route path="/admin/timetables" element={<RoleRoute roles={['admin']}><TimetableManager /></RoleRoute>} />
+
+          {/* Phase B — Academic structure */}
+          <Route path="/admin/academic-years" element={<RoleRoute roles={['admin']}><ManageAcademicYears /></RoleRoute>} />
+          <Route path="/admin/grades"         element={<RoleRoute roles={['admin']}><ManageGrades /></RoleRoute>} />
+          <Route path="/admin/sections"       element={<RoleRoute roles={['admin']}><ManageSections /></RoleRoute>} />
+
+          {/* Timetable viewer — student and teacher */}
           <Route path="/student/timetable" element={<RoleRoute roles={['student']}><TimetableViewer /></RoleRoute>} />
           <Route path="/teacher/timetable" element={<RoleRoute roles={['teacher']}><TimetableViewer /></RoleRoute>} />
 

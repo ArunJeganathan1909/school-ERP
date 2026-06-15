@@ -1,0 +1,182 @@
+.tt-viewer-block {
+    margin-bottom: var(--space-2xl);
+}
+
+.tt-viewer-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: var(--space-lg);
+    gap: var(--space-md);
+    flex-wrap: wrap;
+}
+
+.tt-viewer-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-xs);
+}
+
+.tt-viewer-sub {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+}
+
+/* Today strip */
+.tt-today-strip {
+    background: var(--color-primary-light);
+    border: 1px solid rgba(79, 70, 229, 0.2);
+    border-radius: var(--radius-lg);
+    padding: var(--space-md) var(--space-lg);
+    margin-bottom: var(--space-lg);
+}
+
+.tt-today-strip__label {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--color-primary);
+    margin-bottom: var(--space-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.tt-today-strip__slots {
+    display: flex;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+}
+
+.tt-today-slot {
+    background: #fff;
+    border-radius: var(--radius-md);
+    padding: var(--space-sm) var(--space-md);
+    min-width: 120px;
+    border: 1px solid rgba(79, 70, 229, 0.15);
+}
+
+.tt-today-slot__time {
+    font-size: 0.75rem;
+    color: var(--color-primary);
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.tt-today-slot__subject {
+    font-size: 0.875rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tt-today-slot__subject strong {
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.tt-today-slot__subject span {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+}
+
+/* Timetable grid table */
+.tt-grid {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 600px;
+}
+
+.tt-grid thead tr {
+    background: var(--color-bg);
+    border-bottom: 2px solid var(--color-border);
+}
+
+.tt-grid__period-col {
+    width: 90px;
+    text-align: left;
+    padding: var(--space-sm) var(--space-md);
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.tt-grid__day-col {
+    text-align: center;
+    padding: var(--space-sm) var(--space-sm);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    min-width: 110px;
+}
+
+.tt-grid__day-col--today {
+    color: var(--color-primary);
+    background: var(--color-primary-light);
+}
+
+.tt-grid__period-cell {
+    padding: var(--space-sm) var(--space-md);
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: top;
+    background: var(--color-bg);
+}
+
+.tt-grid__break-cell {
+    padding: var(--space-sm);
+    border-bottom: 1px solid var(--color-border);
+    text-align: center;
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    background: #FAFAFA;
+    font-style: italic;
+}
+
+.tt-grid__slot-cell {
+    padding: var(--space-sm);
+    border-bottom: 1px solid var(--color-border);
+    border-left: 1px solid var(--color-border);
+    vertical-align: top;
+    min-height: 64px;
+    transition: background var(--transition-fast);
+}
+
+.tt-grid__slot-cell--filled {
+    background: #FAFBFF;
+}
+
+.tt-grid__slot-cell--mine {
+    background: #EEF2FF;
+    border-left: 3px solid var(--color-primary);
+}
+
+.tt-grid__slot-cell--today {
+    background: rgba(79, 70, 229, 0.04);
+}
+
+.tt-slot-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 2px;
+}
+
+.tt-slot-code {
+    font-size: 0.7rem;
+    color: var(--color-primary);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.tt-slot-teacher {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    margin-top: 2px;
+}
+
+.tt-slot-free {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+}
