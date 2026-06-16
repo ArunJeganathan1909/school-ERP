@@ -19,51 +19,50 @@ connectDB();
 
 app.use(helmet());
 app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
-app.use(express.json({ limit: '10kb'}));
+app.use(express.json({ limit: '10kb' }));
 app.use(morgan('dev'));
 
 // Rate limiter: max 100 requests per 15 min per IP
 app.use('/api', rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
-    message: {
-        success: false,
-        message: 'Too many requests, try again later.'
-    }
+    message: { success: false, message: 'Too many requests, try again later.' },
 }));
 
-// Routes
-app.use('/api/auth', require('./routes/authRoutes'));
-app.use('/api/users', require('./routes/userRoutes'));
-app.use('/api/courses',     require('./routes/courseRoutes'));
-app.use('/api/subjects',    require('./routes/subjectRoutes'));
-app.use('/api/enrollments', require('./routes/enrollmentRoutes'));
-app.use('/api/lessons', require('./routes/lessonRoutes'));
-app.use('/api/assignments', require('./routes/assignmentRoutes'));
-app.use('/api/submissions', require('./routes/submissionRoutes'));
-app.use('/api/quizzes', require('./routes/quizRoutes'));
-app.use('/api/attendances', require('./routes/attendanceRoutes'));
-app.use('/api/fees', require('./routes/feeRoutes'));
-app.use('/api/notifications', require('./routes/notificationRoutes'));
-app.use('/api/announcements', require('./routes/announcementRoutes'));
-app.use('/api/reports', require('./routes/reportRoutes'));
-app.use('/api/timetables', require('./routes/timetableRoutes'));
-app.use('/api/academic-years',    require('./routes/academicYearRoutes'));
-app.use('/api/grades',            require('./routes/gradeRoutes'));
-app.use('/api/sections',          require('./routes/sectionRoutes'));
-app.use('/api/student-sections',  require('./routes/studentSectionRoutes'));
+// ── Routes ────────────────────────────────────────────────────────────────────
+app.use('/api/auth',               require('./routes/authRoutes'));
+app.use('/api/users',              require('./routes/userRoutes'));
 
-// Health check
-app.get('/', (req, res) =>
-    res.json({ message: 'School ERP API running'})
-);
+// ── Academic structure ────────────────────────────────────────────────────────
+app.use('/api/academic-years',     require('./routes/academicYearRoutes'));
+app.use('/api/grades',             require('./routes/gradeRoutes'));
+app.use('/api/sections',           require('./routes/sectionRoutes'));
+app.use('/api/student-sections',   require('./routes/studentSectionRoutes'));
+
+// ── Subjects & enrollment (replaces courses + enrollments) ───────────────────
+app.use('/api/subjects',           require('./routes/subjectRoutes'));
+app.use('/api/subject-enrollments',require('./routes/subjectEnrollmentRoutes'));
+
+// ── Learning content ──────────────────────────────────────────────────────────
+app.use('/api/lessons',            require('./routes/lessonRoutes'));
+app.use('/api/assignments',        require('./routes/assignmentRoutes'));
+app.use('/api/submissions',        require('./routes/submissionRoutes'));
+app.use('/api/quizzes',            require('./routes/quizRoutes'));
+
+// ── School operations ─────────────────────────────────────────────────────────
+app.use('/api/attendances',        require('./routes/attendanceRoutes'));
+app.use('/api/fees',               require('./routes/feeRoutes'));
+app.use('/api/notifications',      require('./routes/notificationRoutes'));
+app.use('/api/announcements',      require('./routes/announcementRoutes'));
+app.use('/api/reports',            require('./routes/reportRoutes'));
+app.use('/api/timetables',         require('./routes/timetableRoutes'));
+
+// ── Health check ──────────────────────────────────────────────────────────────
+app.get('/', (req, res) => res.json({ message: 'School ERP API running' }));
 
 // 404 handler
 app.use((req, res) =>
-    res.status(404).json({
-        success: false,
-        message: 'Route not found'
-    })
+    res.status(404).json({ success: false, message: 'Route not found' })
 );
 
 // Global error handler
