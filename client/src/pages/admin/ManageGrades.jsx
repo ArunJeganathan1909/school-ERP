@@ -11,7 +11,7 @@ const EMPTY = { academicYear: '', gradeNumber: 1, name: '', stream: 'none', desc
 
 export default function ManageGrades() {
     const dispatch = useDispatch();
-    const { list: years }  = useSelector((s) => s.academicYears);
+    const { list: years } = useSelector((s) => s.academicYears);
     const { list: grades, loading, error } = useSelector((s) => s.grades);
 
     const [filterYear, setFilterYear] = useState('');
@@ -22,28 +22,21 @@ export default function ManageGrades() {
     const [formError,  setFormError]  = useState('');
 
     useEffect(() => { dispatch(fetchAcademicYears()); }, [dispatch]);
-
     useEffect(() => {
         const params = {};
         if (filterYear) params.academicYear = filterYear;
         dispatch(fetchGrades(params));
     }, [dispatch, filterYear]);
 
-    const openCreate = () => {
-        setEditGrade(null);
-        setForm({ ...EMPTY, academicYear: filterYear || '' });
-        setFormError('');
-        setShowModal(true);
-    };
-
+    const openCreate = () => { setEditGrade(null); setForm({ ...EMPTY, academicYear: filterYear || '' }); setFormError(''); setShowModal(true); };
     const openEdit = (g) => {
         setEditGrade(g);
         setForm({
             academicYear: g.academicYear?._id || g.academicYear || '',
-            gradeNumber:  g.gradeNumber,
-            name:         g.name,
-            stream:       g.stream || 'none',
-            description:  g.description || '',
+            gradeNumber: g.gradeNumber,
+            name: g.name,
+            stream: g.stream || 'none',
+            description: g.description || '',
         });
         setFormError('');
         setShowModal(true);
@@ -51,7 +44,6 @@ export default function ManageGrades() {
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-        // Auto-fill name when gradeNumber changes
         if (name === 'gradeNumber') {
             setForm((f) => ({ ...f, gradeNumber: Number(value), name: `Grade ${value}` }));
         } else {
@@ -87,14 +79,11 @@ export default function ManageGrades() {
             technology: { bg: '#FEF2F2', color: '#DC2626' },
         };
         const c = colors[s] || colors.none;
-        return (
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 8px', borderRadius: 'var(--radius-full)', background: c.bg, color: c.color, textTransform: 'capitalize' }}>
-        {s === 'none' ? 'General' : s}
-      </span>
-        );
+        return <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 8px', borderRadius: 'var(--radius-full)', background: c.bg, color: c.color, textTransform: 'capitalize' }}>{s === 'none' ? 'General' : s}</span>;
     };
 
-    // Group by academic year for display
+    const isALGrade = form.gradeNumber >= 12;
+
     const grouped = grades.reduce((acc, g) => {
         const key = g.academicYear?.name || 'Unknown year';
         if (!acc[key]) acc[key] = [];
@@ -115,7 +104,6 @@ export default function ManageGrades() {
                 </div>
 
                 <div className="page-body">
-                    {/* Year filter */}
                     <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-lg)', flexWrap: 'wrap' }}>
                         <select className="form-input" style={{ width: 220 }} value={filterYear} onChange={(e) => setFilterYear(e.target.value)}>
                             <option value="">All academic years</option>
@@ -126,23 +114,19 @@ export default function ManageGrades() {
                     {error && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{error}</div>}
 
                     {loading && grades.length === 0 ? (
-                        <div className="empty-state">
-                            <div className="spinner" style={{ width: 36, height: 36, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} />
-                        </div>
+                        <div className="empty-state"><div className="spinner" style={{ width: 36, height: 36, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} /></div>
                     ) : grades.length === 0 ? (
                         <div className="empty-state">
                             <div className="empty-state__icon">🎓</div>
                             <p>No grades found. {years.length === 0 ? 'Create an academic year first.' : 'Add your first grade.'}</p>
-                            {years.length > 0 && (
-                                <button className="btn btn-primary" style={{ marginTop: 'var(--space-md)' }} onClick={openCreate}>Add grade</button>
-                            )}
+                            {years.length > 0 && <button className="btn btn-primary" style={{ marginTop: 'var(--space-md)' }} onClick={openCreate}>Add grade</button>}
                         </div>
                     ) : (
                         Object.entries(grouped).map(([yearName, gradeList]) => (
                             <div key={yearName} className="grade-year-group">
                                 <div className="grade-year-label">{yearName}</div>
                                 <div className="grade-cards-grid">
-                                    {gradeList.sort((a, b) => a.gradeNumber - b.gradeNumber).map((g) => (
+                                    {gradeList.sort((a, b) => a.gradeNumber - b.gradeNumber || a.stream.localeCompare(b.stream)).map((g) => (
                                         <div key={g._id} className="grade-card card">
                                             <div className="grade-card__header">
                                                 <div className="grade-card__number">{g.gradeNumber}</div>
@@ -153,9 +137,10 @@ export default function ManageGrades() {
                                             </div>
                                             <div className="grade-card__name">{g.name}</div>
                                             <div style={{ marginTop: 'var(--space-xs)' }}>{streamBadge(g.stream)}</div>
-                                            {g.description && (
-                                                <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 'var(--space-sm)' }}>{g.description}</p>
+                                            {g.gradeNumber >= 12 && (
+                                                <p style={{ fontSize: '0.75rem', color: 'var(--color-primary)', marginTop: 4, fontWeight: 600 }}>A/L stream</p>
                                             )}
+                                            {g.description && <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 'var(--space-sm)' }}>{g.description}</p>}
                                         </div>
                                     ))}
                                 </div>
@@ -165,7 +150,6 @@ export default function ManageGrades() {
                 </div>
             </div>
 
-            {/* Modal */}
             {showModal && (
                 <div className="modal-overlay" onClick={() => setShowModal(false)}>
                     <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
@@ -186,9 +170,7 @@ export default function ManageGrades() {
                                 <div className="form-group">
                                     <label className="form-label">Grade number *</label>
                                     <select className="form-input" name="gradeNumber" value={form.gradeNumber} onChange={handleChange} required>
-                                        {Array.from({ length: 13 }, (_, i) => i + 1).map((n) => (
-                                            <option key={n} value={n}>Grade {n}</option>
-                                        ))}
+                                        {Array.from({ length: 13 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>Grade {n}{n >= 12 ? ' (A/L)' : ''}</option>)}
                                     </select>
                                 </div>
                                 <div className="form-group">
@@ -197,14 +179,17 @@ export default function ManageGrades() {
                                 </div>
                             </div>
                             <div className="form-group">
-                                <label className="form-label">Stream</label>
+                                <label className="form-label">Stream {isALGrade && <span style={{ color: 'var(--color-error)' }}>*</span>}</label>
                                 <select className="form-input" name="stream" value={form.stream} onChange={handleChange}>
                                     {STREAMS.map((s) => (
-                                        <option key={s} value={s} style={{ textTransform: 'capitalize' }}>
-                                            {s === 'none' ? 'None / General' : s.charAt(0).toUpperCase() + s.slice(1)}
-                                        </option>
+                                        <option key={s} value={s}>{s === 'none' ? 'None / General' : s.charAt(0).toUpperCase() + s.slice(1)}</option>
                                     ))}
                                 </select>
+                                {isALGrade && (
+                                    <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                                        For A/L grades, create one Grade document PER STREAM (e.g. "Grade 12 — Science" and "Grade 12 — Commerce" as separate entries with the same gradeNumber but different stream).
+                                    </p>
+                                )}
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Description</label>

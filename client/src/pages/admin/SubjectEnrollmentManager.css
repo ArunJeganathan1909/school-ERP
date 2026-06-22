@@ -1,0 +1,11 @@
+.subject-enroll-grid { display: grid; grid-template-columns: 320px 1fr; gap: var(--space-lg); align-items: start; }
+@media (max-width: 900px) { .subject-enroll-grid { grid-template-columns: 1fr; } }
+.subject-enroll-row { display: flex; justify-content: space-between; padding: var(--space-sm) 0; border-bottom: 1px solid var(--color-border); font-size: 0.875rem; }
+.bucket-card { border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-md); margin-bottom: var(--space-md); }
+.bucket-card__header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-sm); }
+.bucket-card__name { font-weight: 700; font-size: 0.9375rem; color: var(--color-primary); }
+.bucket-card__options { display: flex; flex-direction: column; gap: var(--space-xs); }
+.bucket-option-btn { display: flex; justify-content: space-between; align-items: center; padding: var(--space-sm) var(--space-md); border-radius: var(--radius-md); border: 1.5px solid var(--color-border); background: var(--color-surface); cursor: pointer; font-size: 0.875rem; transition: all var(--transition-fast); text-align: left; }
+.bucket-option-btn:hover { border-color: var(--color-primary); background: var(--color-primary-light); }
+.bucket-option-btn.selected { border-color: #059669; background: #ECFDF5; color: #059669; font-weight: 600; }
+.bucket-option-btn__teacher { font-size: 0.75rem; color: var(--color-text-muted); }

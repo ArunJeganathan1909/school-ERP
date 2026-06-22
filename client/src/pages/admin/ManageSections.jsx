@@ -5,6 +5,10 @@ import NotificationBell from '../../components/NotificationBell';
 import { fetchAcademicYears } from '../../store/slices/academicYearSlice';
 import { fetchGrades } from '../../store/slices/gradeSlice';
 import { fetchSections, createSection, updateSection, deleteSection, clearSectionError } from '../../store/slices/sectionSlice';
+import {
+    assignStudentToSection, transferStudent, withdrawStudent,
+    clearStudentSectionError, clearLastResult,
+} from '../../store/slices/studentSectionSlice';
 import api from '../../api/axios';
 import './ManageSections.css';
 
@@ -15,6 +19,7 @@ export default function ManageSections() {
     const { list: years }    = useSelector((s) => s.academicYears);
     const { list: grades }   = useSelector((s) => s.grades);
     const { list: sections, loading, error } = useSelector((s) => s.sections);
+    const { lastResult } = useSelector((s) => s.studentSections);
 
     const [filterYear,  setFilterYear]  = useState('');
     const [filterGrade, setFilterGrade] = useState('');
@@ -25,15 +30,15 @@ export default function ManageSections() {
     const [saving,      setSaving]      = useState(false);
     const [formError,   setFormError]   = useState('');
 
-    // Student assignment panel
-    const [selectedSection, setSelectedSection]   = useState(null);
-    const [sectionStudents, setSectionStudents]   = useState([]);
-    const [studentsLoading, setStudentsLoading]   = useState(false);
-    const [assignStudentId, setAssignStudentId]   = useState('');
-    const [rollNumber,      setRollNumber]        = useState('');
-    const [assignError,     setAssignError]       = useState('');
-    const [assigning,       setAssigning]         = useState(false);
-    const [allStudents,     setAllStudents]       = useState([]);
+    const [selectedSection, setSelectedSection] = useState(null);
+    const [sectionStudents, setSectionStudents] = useState([]);
+    const [studentsLoading, setStudentsLoading] = useState(false);
+    const [assignStudentId, setAssignStudentId] = useState('');
+    const [rollNumber,      setRollNumber]      = useState('');
+    const [assignError,     setAssignError]     = useState('');
+    const [assigning,       setAssigning]       = useState(false);
+    const [allStudents,     setAllStudents]     = useState([]);
+    const [transferTarget,  setTransferTarget]  = useState(null); // student record being transferred
 
     useEffect(() => {
         dispatch(fetchAcademicYears());
@@ -41,9 +46,7 @@ export default function ManageSections() {
         api.get('/users?role=student&limit=500').then(({ data }) => setAllStudents(data.users || []));
     }, [dispatch]);
 
-    useEffect(() => {
-        if (filterYear) dispatch(fetchGrades({ academicYear: filterYear }));
-    }, [dispatch, filterYear]);
+    useEffect(() => { if (filterYear) dispatch(fetchGrades({ academicYear: filterYear })); }, [dispatch, filterYear]);
 
     useEffect(() => {
         const params = {};
@@ -52,11 +55,7 @@ export default function ManageSections() {
         dispatch(fetchSections(params));
     }, [dispatch, filterYear, filterGrade]);
 
-    // Load students when a section is selected
-    useEffect(() => {
-        if (!selectedSection) return;
-        loadSectionStudents(selectedSection._id);
-    }, [selectedSection]);
+    useEffect(() => { if (selectedSection) loadSectionStudents(selectedSection._id); }, [selectedSection]);
 
     const loadSectionStudents = async (sectionId) => {
         setStudentsLoading(true);
@@ -67,31 +66,22 @@ export default function ManageSections() {
         setStudentsLoading(false);
     };
 
-    const openCreate = () => {
-        setEditSection(null);
-        setForm({ ...EMPTY, academicYear: filterYear || '', grade: filterGrade || '' });
-        setFormError('');
-        setShowModal(true);
-    };
-
+    const openCreate = () => { setEditSection(null); setForm({ ...EMPTY, academicYear: filterYear || '', grade: filterGrade || '' }); setFormError(''); setShowModal(true); };
     const openEdit = (s) => {
         setEditSection(s);
         setForm({
-            grade:        s.grade?._id        || s.grade        || '',
+            grade: s.grade?._id || s.grade || '',
             academicYear: s.academicYear?._id || s.academicYear || '',
-            name:         s.name,
+            name: s.name,
             classTeacher: s.classTeacher?._id || s.classTeacher || '',
-            capacity:     s.capacity,
-            room:         s.room || '',
+            capacity: s.capacity,
+            room: s.room || '',
         });
         setFormError('');
         setShowModal(true);
     };
 
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setForm((f) => ({ ...f, [name]: value }));
-    };
+    const handleChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -118,37 +108,39 @@ export default function ManageSections() {
         if (!assignStudentId || !selectedSection) return;
         setAssigning(true);
         setAssignError('');
-        try {
-            await api.post('/student-sections/assign', {
-                studentId:  assignStudentId,
-                sectionId:  selectedSection._id,
-                rollNumber: rollNumber || '',
-            });
-            setAssignStudentId('');
-            setRollNumber('');
-            loadSectionStudents(selectedSection._id);
-        } catch (err) {
-            setAssignError(err.response?.data?.message || 'Assignment failed');
-        }
+        dispatch(clearLastResult());
+        const result = await dispatch(assignStudentToSection({ studentId: assignStudentId, sectionId: selectedSection._id, rollNumber }));
         setAssigning(false);
+        if (result.error) { setAssignError(result.payload || 'Assignment failed'); return; }
+        setAssignStudentId('');
+        setRollNumber('');
+        loadSectionStudents(selectedSection._id);
+    };
+
+    const handleTransfer = async (newSectionId) => {
+        if (!transferTarget) return;
+        dispatch(clearLastResult());
+        const result = await dispatch(transferStudent({
+            studentId: transferTarget.student._id,
+            newSectionId,
+            transferNote: 'Transferred via admin panel',
+        }));
+        setTransferTarget(null);
+        if (!result.error) loadSectionStudents(selectedSection._id);
     };
 
     const handleWithdraw = async (recordId) => {
-        if (!window.confirm('Withdraw this student from the section?')) return;
-        try {
-            await api.put(`/student-sections/${recordId}/withdraw`, { reason: 'Admin withdrawal' });
-            loadSectionStudents(selectedSection._id);
-        } catch (err) {
-            alert(err.response?.data?.message || 'Failed');
-        }
+        if (!window.confirm('Withdraw this student from the section? All subject enrollments will be dropped.')) return;
+        await dispatch(withdrawStudent(recordId));
+        loadSectionStudents(selectedSection._id);
     };
 
-    // Filter grades to selected year
-    const filteredGrades = filterYear ? grades.filter((g) => (g.academicYear?._id || g.academicYear) === filterYear) : grades;
+    const filteredGrades   = filterYear ? grades.filter((g) => (g.academicYear?._id || g.academicYear) === filterYear) : grades;
+    const assignedIds      = new Set(sectionStudents.map((r) => r.student?._id));
+    const unassigned        = allStudents.filter((s) => !assignedIds.has(s._id));
 
-    // Unassigned students (not in the displayed list)
-    const assignedIds = new Set(sectionStudents.map((r) => r.student?._id));
-    const unassigned  = allStudents.filter((s) => !assignedIds.has(s._id));
+    // Sections in same grade but different section (for transfer target list) — also allow cross-grade
+    const transferOptions = sections.filter((s) => s._id !== selectedSection?._id);
 
     return (
         <div className="app-shell">
@@ -158,41 +150,33 @@ export default function ManageSections() {
                     <h1 className="topbar__title">Sections</h1>
                     <div className="topbar__right">
                         <NotificationBell />
-                        <button className="btn btn-primary" onClick={openCreate} disabled={!filterYear}>
-                            + Add section
-                        </button>
+                        <button className="btn btn-primary" onClick={openCreate} disabled={!filterYear}>+ Add section</button>
                     </div>
                 </div>
 
                 <div className="page-body">
-                    {/* Filters */}
                     <div className="section-filters">
                         <select className="form-input" style={{ width: 200 }} value={filterYear} onChange={(e) => { setFilterYear(e.target.value); setFilterGrade(''); }}>
                             <option value="">Select academic year</option>
                             {years.map((y) => <option key={y._id} value={y._id}>{y.name}{y.isActive ? ' ✓' : ''}</option>)}
                         </select>
-                        <select className="form-input" style={{ width: 180 }} value={filterGrade} onChange={(e) => setFilterGrade(e.target.value)} disabled={!filterYear}>
+                        <select className="form-input" style={{ width: 220 }} value={filterGrade} onChange={(e) => setFilterGrade(e.target.value)} disabled={!filterYear}>
                             <option value="">All grades</option>
                             {filteredGrades.sort((a, b) => a.gradeNumber - b.gradeNumber).map((g) => (
-                                <option key={g._id} value={g._id}>{g.name}</option>
+                                <option key={g._id} value={g._id}>{g.name}{g.stream !== 'none' ? ` (${g.stream})` : ''}</option>
                             ))}
                         </select>
                     </div>
 
-                    {!filterYear && (
-                        <div className="alert alert-info">Select an academic year to view and manage sections.</div>
-                    )}
-
+                    {!filterYear && <div className="alert alert-info">Select an academic year to view and manage sections.</div>}
                     {error && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{error}</div>}
+                    {lastResult?.message && <div className="alert alert-success" style={{ marginBottom: 'var(--space-lg)' }}>{lastResult.message}</div>}
 
                     {filterYear && (
                         <div className="sections-layout">
-                            {/* Section cards column */}
                             <div className="sections-list">
                                 {loading && sections.length === 0 ? (
-                                    <div className="empty-state">
-                                        <div className="spinner" style={{ width: 32, height: 32, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} />
-                                    </div>
+                                    <div className="empty-state"><div className="spinner" style={{ width: 32, height: 32, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} /></div>
                                 ) : sections.length === 0 ? (
                                     <div className="empty-state">
                                         <div className="empty-state__icon">🏫</div>
@@ -204,13 +188,14 @@ export default function ManageSections() {
                                         const display = `${s.grade?.gradeNumber || ''}${s.name}`;
                                         const isSelected = selectedSection?._id === s._id;
                                         return (
-                                            <div
-                                                key={s._id}
-                                                className={`section-card card ${isSelected ? 'section-card--selected' : ''}`}
-                                                onClick={() => setSelectedSection(isSelected ? null : s)}
-                                            >
+                                            <div key={s._id} className={`section-card card ${isSelected ? 'section-card--selected' : ''}`} onClick={() => setSelectedSection(isSelected ? null : s)}>
                                                 <div className="section-card__header">
-                                                    <div className="section-card__display">{display}</div>
+                                                    <div>
+                                                        <div className="section-card__display">{display}</div>
+                                                        {s.grade?.stream && s.grade.stream !== 'none' && (
+                                                            <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>{s.grade.stream} stream</span>
+                                                        )}
+                                                    </div>
                                                     <div className="section-card__actions" onClick={(e) => e.stopPropagation()}>
                                                         <button className="btn btn-outline btn-sm" onClick={() => openEdit(s)}>Edit</button>
                                                         <button className="btn btn-danger btn-sm" onClick={() => handleDelete(s)}>Del</button>
@@ -221,50 +206,27 @@ export default function ManageSections() {
                                                     <span>👥 {s.studentCount ?? 0} / {s.capacity}</span>
                                                 </div>
                                                 {s.room && <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>🏠 {s.room}</div>}
-                                                <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-                                                    Semester {s.currentSemester}
-                                                </div>
+                                                <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 4 }}>Semester {s.currentSemester}</div>
                                             </div>
                                         );
                                     })
                                 )}
                             </div>
 
-                            {/* Student assignment panel */}
                             {selectedSection && (
                                 <div className="student-panel card">
                                     <div className="student-panel__header">
-                                        <h3>
-                                            Students in {selectedSection.grade?.gradeNumber}{selectedSection.name}
-                                        </h3>
-                                        <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                      {sectionStudents.length} / {selectedSection.capacity}
-                    </span>
+                                        <h3>Students in {selectedSection.grade?.gradeNumber}{selectedSection.name}</h3>
+                                        <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>{sectionStudents.length} / {selectedSection.capacity}</span>
                                     </div>
 
-                                    {/* Assign form */}
                                     <form className="assign-form" onSubmit={handleAssignStudent}>
                                         <div className="assign-form__fields">
-                                            <select
-                                                className="form-input"
-                                                value={assignStudentId}
-                                                onChange={(e) => setAssignStudentId(e.target.value)}
-                                                required
-                                            >
+                                            <select className="form-input" value={assignStudentId} onChange={(e) => setAssignStudentId(e.target.value)} required>
                                                 <option value="">Select student to assign</option>
-                                                {unassigned.map((st) => (
-                                                    <option key={st._id} value={st._id}>
-                                                        {st.name} ({st.email})
-                                                    </option>
-                                                ))}
+                                                {unassigned.map((st) => <option key={st._id} value={st._id}>{st.name} ({st.email})</option>)}
                                             </select>
-                                            <input
-                                                className="form-input"
-                                                placeholder="Roll no. (optional)"
-                                                value={rollNumber}
-                                                onChange={(e) => setRollNumber(e.target.value)}
-                                                style={{ width: 140, flexShrink: 0 }}
-                                            />
+                                            <input className="form-input" placeholder="Roll no. (optional)" value={rollNumber} onChange={(e) => setRollNumber(e.target.value)} style={{ width: 140, flexShrink: 0 }} />
                                             <button type="submit" className="btn btn-primary btn-sm" disabled={assigning || !assignStudentId}>
                                                 {assigning ? <span className="spinner" /> : '+ Assign'}
                                             </button>
@@ -272,38 +234,22 @@ export default function ManageSections() {
                                         {assignError && <div className="alert alert-error" style={{ marginTop: 'var(--space-sm)' }}>{assignError}</div>}
                                     </form>
 
-                                    {/* Student list */}
                                     {studentsLoading ? (
-                                        <div className="empty-state" style={{ padding: 'var(--space-xl)' }}>
-                                            <div className="spinner" style={{ width: 28, height: 28, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} />
-                                        </div>
+                                        <div className="empty-state" style={{ padding: 'var(--space-xl)' }}><div className="spinner" style={{ width: 28, height: 28, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} /></div>
                                     ) : sectionStudents.length === 0 ? (
-                                        <div className="empty-state" style={{ padding: 'var(--space-xl)' }}>
-                                            <div className="empty-state__icon">👥</div>
-                                            <p>No students assigned yet.</p>
-                                        </div>
+                                        <div className="empty-state" style={{ padding: 'var(--space-xl)' }}><div className="empty-state__icon">👥</div><p>No students assigned yet.</p></div>
                                     ) : (
                                         <div className="student-panel__list">
                                             {sectionStudents.map((record) => (
                                                 <div key={record._id} className="student-panel__row">
-                                                    <div className="student-panel__avatar">
-                                                        {record.student?.name?.charAt(0).toUpperCase()}
-                                                    </div>
+                                                    <div className="student-panel__avatar">{record.student?.name?.charAt(0).toUpperCase()}</div>
                                                     <div className="student-panel__info">
                                                         <div className="student-panel__name">{record.student?.name}</div>
                                                         <div className="student-panel__email">{record.student?.email}</div>
                                                     </div>
-                                                    <div className="student-panel__roll">
-                                                        {record.rollNumber || <span style={{ color: 'var(--color-text-muted)' }}>No roll no.</span>}
-                                                    </div>
-                                                    <button
-                                                        className="btn btn-ghost btn-sm"
-                                                        style={{ color: 'var(--color-error)', flexShrink: 0 }}
-                                                        onClick={() => handleWithdraw(record._id)}
-                                                        title="Withdraw from section"
-                                                    >
-                                                        ✕
-                                                    </button>
+                                                    <div className="student-panel__roll">{record.rollNumber || <span style={{ color: 'var(--color-text-muted)' }}>No roll no.</span>}</div>
+                                                    <button className="btn btn-ghost btn-sm" onClick={() => setTransferTarget(record)} title="Transfer to another section">⇄</button>
+                                                    <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-error)', flexShrink: 0 }} onClick={() => handleWithdraw(record._id)} title="Withdraw from section">✕</button>
                                                 </div>
                                             ))}
                                         </div>
@@ -315,7 +261,7 @@ export default function ManageSections() {
                 </div>
             </div>
 
-            {/* Section modal */}
+            {/* Section create/edit modal */}
             {showModal && (
                 <div className="modal-overlay" onClick={() => setShowModal(false)}>
                     <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
@@ -338,7 +284,7 @@ export default function ManageSections() {
                                     <select className="form-input" name="grade" value={form.grade} onChange={handleChange} required>
                                         <option value="">Select grade</option>
                                         {filteredGrades.sort((a, b) => a.gradeNumber - b.gradeNumber).map((g) => (
-                                            <option key={g._id} value={g._id}>{g.name}</option>
+                                            <option key={g._id} value={g._id}>{g.name}{g.stream !== 'none' ? ` (${g.stream})` : ''}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -346,16 +292,7 @@ export default function ManageSections() {
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Section name *</label>
-                                    <input
-                                        className="form-input"
-                                        name="name"
-                                        value={form.name}
-                                        onChange={handleChange}
-                                        required
-                                        placeholder="e.g. A, B, C"
-                                        style={{ textTransform: 'uppercase' }}
-                                        maxLength={3}
-                                    />
+                                    <input className="form-input" name="name" value={form.name} onChange={handleChange} required placeholder="e.g. A, B, C" style={{ textTransform: 'uppercase' }} maxLength={3} />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Room / Class</label>
@@ -380,6 +317,33 @@ export default function ManageSections() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Transfer modal */}
+            {transferTarget && (
+                <div className="modal-overlay" onClick={() => setTransferTarget(null)}>
+                    <div className="modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+                        <div className="modal__header">
+                            <h2 className="modal__title">Transfer {transferTarget.student?.name}</h2>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setTransferTarget(null)}>✕</button>
+                        </div>
+                        <div className="modal__body">
+                            <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-md)' }}>
+                                Mandatory subjects will be re-enrolled automatically. Bucket subjects will only be dropped if not offered in the new section.
+                            </p>
+                            <div className="form-group">
+                                <label className="form-label">Transfer to section</label>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)', maxHeight: 240, overflowY: 'auto' }}>
+                                    {transferOptions.map((s) => (
+                                        <button key={s._id} className="btn btn-outline" style={{ justifyContent: 'flex-start' }} onClick={() => handleTransfer(s._id)}>
+                                            Grade {s.grade?.gradeNumber}{s.name} {s.grade?.stream !== 'none' ? `(${s.grade?.stream})` : ''} — {s.studentCount ?? 0}/{s.capacity}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

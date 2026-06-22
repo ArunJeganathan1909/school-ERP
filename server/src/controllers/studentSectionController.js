@@ -4,6 +4,7 @@ const Grade             = require('../models/Grade');
 const AcademicYear      = require('../models/AcademicYear');
 const User              = require('../models/User');
 const SubjectEnrollment = require('../models/SubjectEnrollment');
+const Subject           = require('../models/Subject');
 const { autoEnrollMandatory } = require('./subjectEnrollmentController');
 
 // ─── Helper: sync denormalized User fields ────────────────────────────────────
@@ -178,6 +179,47 @@ exports.transferStudent = async (req, res) => {
             { $set: { status: 'dropped' } }
         );
 
+        // ── Bucket enrollments: only drop the ones whose bucket name doesn't
+        //    exist for the NEW section/grade. Buckets that are still valid
+        //    (same bucket name offered in the new section) are preserved.
+        const { gradeRangeFor } = require('./subjectController');
+        const newGradeRange = gradeRangeFor(newSection.grade?.gradeNumber);
+
+        const validBucketNames = await Subject.distinct('bucket', {
+            isMandatory:  false,
+            isActive:     true,
+            bucket:       { $ne: null },
+            academicYear: newSection.academicYear._id,
+            $or: [
+                { section: newSectionId },
+                { grade:   newSection.grade._id },
+                ...(newGradeRange ? [{ gradeRange: newGradeRange }] : []),
+            ],
+        });
+
+        const activeBucketEnrollments = await SubjectEnrollment.find({
+            student:        studentId,
+            academicYear:   currentRecord.academicYear,
+            enrollmentType: 'bucket',
+            status:         'active',
+        });
+
+        let bucketsDropped = 0;
+        for (const enr of activeBucketEnrollments) {
+            if (!validBucketNames.includes(enr.bucket)) {
+                enr.status = 'dropped';
+                await enr.save();
+                bucketsDropped++;
+            }
+                // else: bucket name still offered in new section — keep it active.
+                // Note: the enrollment's `section` field will still point at the
+            // old section; update it so it reflects the student's new section.
+            else {
+                enr.section = newSectionId;
+                await enr.save();
+            }
+        }
+
         // Create new section assignment
         const newRecord = await StudentSection.create({
             student:      studentId,
@@ -217,7 +259,9 @@ exports.transferStudent = async (req, res) => {
             success: true,
             record:  newRecord,
             mandatorySubjectsEnrolled: enrolled,
-            message: `Student transferred to ${newSection.grade?.gradeNumber}${newSection.name}. ${enrolled} mandatory subject(s) re-enrolled.`,
+            bucketsCarriedOver: activeBucketEnrollments.length - bucketsDropped,
+            bucketsDropped,
+            message: `Student transferred to ${newSection.grade?.gradeNumber}${newSection.name}. ${enrolled} mandatory subject(s) re-enrolled. ${bucketsDropped > 0 ? `${bucketsDropped} bucket selection(s) dropped (not offered in new section) and need re-assignment.` : ''}`,
         });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });

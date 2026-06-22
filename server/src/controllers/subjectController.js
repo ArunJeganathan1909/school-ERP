@@ -3,10 +3,6 @@ const SubjectEnrollment = require('../models/SubjectEnrollment');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Map a gradeNumber (1–13) to its range string.
- * Used to find mandatory subjects that apply to a grade automatically.
- */
 function gradeRangeFor(gradeNumber) {
     if (gradeNumber >= 1  && gradeNumber <= 5)  return '1-5';
     if (gradeNumber >= 6  && gradeNumber <= 9)  return '6-9';
@@ -14,30 +10,59 @@ function gradeRangeFor(gradeNumber) {
     if (gradeNumber >= 12 && gradeNumber <= 13) return '12-13';
     return null;
 }
-
-// Export helper so studentSectionController can use it
 exports.gradeRangeFor = gradeRangeFor;
 
-/**
- * Get all mandatory subjects that apply to a given gradeNumber + academicYear.
- * Combines:
- *   1. Grade-range-wide mandatory subjects (e.g. all grade 6-9 students do Maths)
- *   2. Section-specific mandatory subjects
- */
 exports.getMandatorySubjectsForGrade = async (gradeNumber, academicYearId, sectionId) => {
     const range = gradeRangeFor(gradeNumber);
-
-    const query = {
-        isMandatory: true,
-        isActive:    true,
+    return Subject.find({
+        isMandatory:  true,
+        isActive:     true,
         academicYear: academicYearId,
         $or: [
-            { gradeRange: range },          // grade-range-wide mandatory subjects
-            { section: sectionId },         // section-specific mandatory subjects
+            { gradeRange: range },
+            { section: sectionId },
         ],
-    };
+    });
+};
 
-    return Subject.find(query);
+/**
+ * GET /api/subjects/buckets-for-section/:sectionId?academicYear=
+ * Returns the distinct bucket names that exist for a given section
+ * (combines section-specific subjects + grade-wide subjects for the section's grade).
+ * Used by the frontend to dynamically render the right bucket cards per stream.
+ */
+exports.getBucketsForSection = async (req, res) => {
+    try {
+        const { academicYear } = req.query;
+        const { sectionId } = req.params;
+
+        // We need the section's grade to also fetch grade-wide bucket subjects
+        const Section = require('../models/Section');
+        const section = await Section.findById(sectionId).populate('grade', 'gradeNumber');
+        if (!section) {
+            return res.status(404).json({ success: false, message: 'Section not found' });
+        }
+
+        const range = gradeRangeFor(section.grade?.gradeNumber);
+        const filter = {
+            isMandatory:  false,
+            isActive:     true,
+            bucket:       { $ne: null },
+            $or: [
+                { section: sectionId },
+                { grade: section.grade._id },
+            ],
+        };
+        if (academicYear) filter.academicYear = academicYear;
+        if (range)        filter.$or.push({ gradeRange: range });
+
+        const bucketNames = await Subject.distinct('bucket', filter);
+        bucketNames.sort();
+
+        res.status(200).json({ success: true, buckets: bucketNames });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
 };
 
 // ─── GET /api/subjects ────────────────────────────────────────────────────────
@@ -60,7 +85,6 @@ exports.getSubjects = async (req, res) => {
             .populate('academicYear', 'name')
             .populate('teacher',      'name email')
             .sort({ isMandatory: -1, bucket: 1, name: 1 });
-        // Mandatory first, then buckets alphabetically
 
         res.status(200).json({ success: true, subjects });
     } catch (err) {
@@ -68,8 +92,8 @@ exports.getSubjects = async (req, res) => {
     }
 };
 
-// ─── GET /api/subjects/buckets?grade=id&academicYear=id ──────────────────────
-// Returns all bucket subjects grouped by bucket name — useful for admin UI
+// ─── GET /api/subjects/buckets?grade=id&academicYear=id&section=id ────────────
+// Returns all bucket subjects grouped by bucket name
 exports.getBucketSubjects = async (req, res) => {
     try {
         const { grade, academicYear, section } = req.query;
@@ -86,7 +110,6 @@ exports.getBucketSubjects = async (req, res) => {
             .populate('teacher', 'name email')
             .sort({ bucket: 1, name: 1 });
 
-        // Group by bucket
         const grouped = subjects.reduce((acc, s) => {
             if (!acc[s.bucket]) acc[s.bucket] = [];
             acc[s.bucket].push(s);
@@ -117,17 +140,11 @@ exports.getSubject = async (req, res) => {
     }
 };
 
-// ─── POST /api/subjects — admin only ─────────────────────────────────────────
+// ─── POST /api/subjects ───────────────────────────────────────────────────────
 /**
- * Creating a subject:
- *
- * Mandatory subject examples:
- *   { name: 'Mathematics', code: 'MATH', isMandatory: true, gradeRange: '6-9',
- *     academicYear: id, grade: id, section: id }
- *
- * Bucket subject examples:
- *   { name: 'Art', code: 'ART', isMandatory: false, bucket: 'bucket1',
- *     grade: id, section: id, academicYear: id }
+ * bucket is now a free-form string the admin types (e.g. "scienceBucket",
+ * "ictBucket", "commerceBucket", "religion", "firstLang", etc.)
+ * No validation against a fixed enum — schools define their own per stream.
  */
 exports.createSubject = async (req, res) => {
     try {
@@ -137,11 +154,10 @@ exports.createSubject = async (req, res) => {
             teacher, credits, description, schedule, semester,
         } = req.body;
 
-        // Validate bucket logic
         if (!isMandatory && !bucket) {
             return res.status(400).json({
                 success: false,
-                message: 'Non-mandatory subjects must belong to a bucket (bucket1, religion, firstLang, secondLang)',
+                message: 'Non-mandatory subjects must have a bucket name (e.g. "scienceBucket", "ictBucket", "religion")',
             });
         }
         if (isMandatory && bucket) {
@@ -153,8 +169,8 @@ exports.createSubject = async (req, res) => {
 
         const subject = await Subject.create({
             name, code, section, grade, academicYear,
-            isMandatory: isMandatory !== false, // default true
-            bucket:      isMandatory ? null : bucket,
+            isMandatory: isMandatory !== false,
+            bucket:      isMandatory ? null : bucket.trim(),
             gradeRange:  isMandatory ? (gradeRange || null) : null,
             teacher, credits, description, schedule,
             semester: semester || 1,
@@ -179,7 +195,7 @@ exports.createSubject = async (req, res) => {
     }
 };
 
-// ─── PUT /api/subjects/:id — admin or assigned teacher ───────────────────────
+// ─── PUT /api/subjects/:id ────────────────────────────────────────────────────
 exports.updateSubject = async (req, res) => {
     try {
         const subject = await Subject.findById(req.params.id);
@@ -191,7 +207,7 @@ exports.updateSubject = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Not authorized' });
         }
 
-        // Don't allow changing mandatory/bucket type after creation (would break enrollments)
+        // Don't allow changing mandatory/bucket type after creation
         const { isMandatory, bucket, ...safeUpdate } = req.body;
 
         const updated = await Subject.findByIdAndUpdate(
@@ -210,7 +226,7 @@ exports.updateSubject = async (req, res) => {
     }
 };
 
-// ─── DELETE /api/subjects/:id — admin only ────────────────────────────────────
+// ─── DELETE /api/subjects/:id ─────────────────────────────────────────────────
 exports.deleteSubject = async (req, res) => {
     try {
         const subject = await Subject.findById(req.params.id);
@@ -218,7 +234,6 @@ exports.deleteSubject = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Subject not found' });
         }
 
-        // Block deletion if active enrollments exist
         const enrollmentCount = await SubjectEnrollment.countDocuments({
             subject: req.params.id,
             status:  'active',

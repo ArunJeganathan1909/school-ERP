@@ -8,73 +8,63 @@ import {
 } from '../../store/slices/academicYearSlice';
 import './ManageAcademicYears.css';
 
-const EMPTY = {
-    name: '', startDate: '', endDate: '',
-    totalSemesters: 3, currentSemester: 1, description: '',
-};
+const EMPTY = { name: '', startDate: '', endDate: '', totalSemesters: 3, currentSemester: 1, description: '' };
 
 export default function ManageAcademicYears() {
     const dispatch = useDispatch();
     const { list: years, loading, error } = useSelector((s) => s.academicYears);
 
-    const [showModal,   setShowModal]   = useState(false);
-    const [editYear,    setEditYear]    = useState(null);
-    const [form,        setForm]        = useState(EMPTY);
-    const [saving,      setSaving]      = useState(false);
-    const [formError,   setFormError]   = useState('');
-    const [semModal,    setSemModal]    = useState(null); // year object
+    const [showModal, setShowModal] = useState(false);
+    const [editYear,  setEditYear]  = useState(null);
+    const [form,      setForm]      = useState(EMPTY);
+    const [saving,    setSaving]    = useState(false);
+    const [formError, setFormError] = useState('');
+    const [semModal,  setSemModal]  = useState(null);
     const [newSemester, setNewSemester] = useState(1);
 
     useEffect(() => { dispatch(fetchAcademicYears()); }, [dispatch]);
 
     const openCreate = () => { setEditYear(null); setForm(EMPTY); setFormError(''); setShowModal(true); };
-    const openEdit   = (y) => {
+    const openEdit = (y) => {
         setEditYear(y);
         setForm({
-            name:            y.name,
-            startDate:       y.startDate?.slice(0, 10) || '',
-            endDate:         y.endDate?.slice(0, 10)   || '',
-            totalSemesters:  y.totalSemesters,
+            name: y.name,
+            startDate: y.startDate?.slice(0, 10) || '',
+            endDate: y.endDate?.slice(0, 10) || '',
+            totalSemesters: y.totalSemesters,
             currentSemester: y.currentSemester,
-            description:     y.description || '',
+            description: y.description || '',
         });
         setFormError('');
         setShowModal(true);
     };
 
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setForm((f) => ({ ...f, [name]: value }));
-    };
+    const handleChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
     const handleSave = async (e) => {
         e.preventDefault();
         setSaving(true);
         setFormError('');
         dispatch(clearAYError());
-        let result;
-        if (editYear) {
-            result = await dispatch(updateAcademicYear({ id: editYear._id, data: form }));
-        } else {
-            result = await dispatch(createAcademicYear(form));
-        }
+        const result = editYear
+            ? await dispatch(updateAcademicYear({ id: editYear._id, data: form }))
+            : await dispatch(createAcademicYear(form));
         setSaving(false);
         if (result.error) { setFormError(result.payload || 'Save failed'); return; }
         setShowModal(false);
     };
 
-    const handleActivate = async (y) => {
-        if (!window.confirm(`Activate "${y.name}" as the current academic year? All others will be deactivated.`)) return;
+    const handleActivate = (y) => {
+        if (!window.confirm(`Activate "${y.name}"? All others will be deactivated.`)) return;
         dispatch(activateAcademicYear(y._id));
     };
 
-    const handleDelete = async (y) => {
-        if (!window.confirm(`Delete "${y.name}"? This cannot be undone.`)) return;
+    const handleDelete = (y) => {
+        if (!window.confirm(`Delete "${y.name}"?`)) return;
         dispatch(deleteAcademicYear(y._id));
     };
 
     const openSemModal = (y) => { setSemModal(y); setNewSemester(y.currentSemester); };
-
     const handleSetSemester = async () => {
         await dispatch(setSemester({ id: semModal._id, currentSemester: Number(newSemester) }));
         setSemModal(null);
@@ -98,16 +88,12 @@ export default function ManageAcademicYears() {
                     {error && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{error}</div>}
 
                     {loading && years.length === 0 ? (
-                        <div className="empty-state">
-                            <div className="spinner" style={{ width: 36, height: 36, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} />
-                        </div>
+                        <div className="empty-state"><div className="spinner" style={{ width: 36, height: 36, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} /></div>
                     ) : years.length === 0 ? (
                         <div className="empty-state">
                             <div className="empty-state__icon">📅</div>
                             <p>No academic years yet.</p>
-                            <button className="btn btn-primary" style={{ marginTop: 'var(--space-md)' }} onClick={openCreate}>
-                                Create first academic year
-                            </button>
+                            <button className="btn btn-primary" style={{ marginTop: 'var(--space-md)' }} onClick={openCreate}>Create first academic year</button>
                         </div>
                     ) : (
                         <div className="ay-grid">
@@ -116,20 +102,12 @@ export default function ManageAcademicYears() {
                                     <div className="ay-card__header">
                                         <div>
                                             <div className="ay-card__name">{y.name}</div>
-                                            {y.isActive && (
-                                                <span className="badge badge-success" style={{ marginTop: 4 }}>Active</span>
-                                            )}
+                                            {y.isActive && <span className="badge badge-success" style={{ marginTop: 4 }}>Active</span>}
                                         </div>
                                         <div className="ay-card__actions">
-                                            {!y.isActive && (
-                                                <button className="btn btn-primary btn-sm" onClick={() => handleActivate(y)}>
-                                                    Activate
-                                                </button>
-                                            )}
+                                            {!y.isActive && <button className="btn btn-primary btn-sm" onClick={() => handleActivate(y)}>Activate</button>}
                                             <button className="btn btn-outline btn-sm" onClick={() => openEdit(y)}>Edit</button>
-                                            {!y.isActive && (
-                                                <button className="btn btn-danger btn-sm" onClick={() => handleDelete(y)}>Del</button>
-                                            )}
+                                            {!y.isActive && <button className="btn btn-danger btn-sm" onClick={() => handleDelete(y)}>Del</button>}
                                         </div>
                                     </div>
 
@@ -144,33 +122,22 @@ export default function ManageAcademicYears() {
                                         </div>
                                         <div className="ay-card__info-item">
                                             <span className="ay-card__info-label">Current semester</span>
-                                            <span className="ay-card__info-val" style={{ fontWeight: 700, color: 'var(--color-primary)' }}>
-                        Semester {y.currentSemester}
-                      </span>
+                                            <span className="ay-card__info-val" style={{ fontWeight: 700, color: 'var(--color-primary)' }}>Semester {y.currentSemester}</span>
                                         </div>
                                     </div>
 
                                     {y.isActive && (
                                         <div className="ay-card__semester-bar">
                                             {Array.from({ length: y.totalSemesters }, (_, i) => i + 1).map((sem) => (
-                                                <div
-                                                    key={sem}
-                                                    className={`ay-card__semester-dot ${sem === y.currentSemester ? 'active' : sem < y.currentSemester ? 'done' : ''}`}
-                                                >
+                                                <div key={sem} className={`ay-card__semester-dot ${sem === y.currentSemester ? 'active' : sem < y.currentSemester ? 'done' : ''}`}>
                                                     <span>S{sem}</span>
                                                 </div>
                                             ))}
-                                            <button className="btn btn-outline btn-sm" style={{ marginLeft: 'auto' }} onClick={() => openSemModal(y)}>
-                                                Advance semester
-                                            </button>
+                                            <button className="btn btn-outline btn-sm" style={{ marginLeft: 'auto' }} onClick={() => openSemModal(y)}>Advance semester</button>
                                         </div>
                                     )}
 
-                                    {y.description && (
-                                        <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 'var(--space-sm)' }}>
-                                            {y.description}
-                                        </p>
-                                    )}
+                                    {y.description && <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 'var(--space-sm)' }}>{y.description}</p>}
                                 </div>
                             ))}
                         </div>
@@ -178,7 +145,6 @@ export default function ManageAcademicYears() {
                 </div>
             </div>
 
-            {/* Create / Edit modal */}
             {showModal && (
                 <div className="modal-overlay" onClick={() => setShowModal(false)}>
                     <div className="modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
@@ -186,9 +152,7 @@ export default function ManageAcademicYears() {
                             <h2 className="modal__title">{editYear ? 'Edit academic year' : 'New academic year'}</h2>
                             <button className="btn btn-ghost btn-sm" onClick={() => setShowModal(false)}>✕</button>
                         </div>
-                        {formError && (
-                            <div className="alert alert-error" style={{ margin: '0 var(--space-lg) var(--space-sm)' }}>{formError}</div>
-                        )}
+                        {formError && <div className="alert alert-error" style={{ margin: '0 var(--space-lg) var(--space-sm)' }}>{formError}</div>}
                         <form className="modal__body" onSubmit={handleSave}>
                             <div className="form-group">
                                 <label className="form-label">Year name *</label>
@@ -214,15 +178,13 @@ export default function ManageAcademicYears() {
                                 <div className="form-group">
                                     <label className="form-label">Starting semester</label>
                                     <select className="form-input" name="currentSemester" value={form.currentSemester} onChange={handleChange}>
-                                        {[1, 2, 3, 4].filter(n => n <= form.totalSemesters).map((n) => (
-                                            <option key={n} value={n}>Semester {n}</option>
-                                        ))}
+                                        {[1, 2, 3, 4].filter(n => n <= form.totalSemesters).map((n) => <option key={n} value={n}>Semester {n}</option>)}
                                     </select>
                                 </div>
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Description</label>
-                                <textarea className="form-input" name="description" value={form.description} onChange={handleChange} rows={2} placeholder="Optional notes…" style={{ resize: 'vertical' }} />
+                                <textarea className="form-input" name="description" value={form.description} onChange={handleChange} rows={2} style={{ resize: 'vertical' }} />
                             </div>
                             <div className="modal__footer">
                                 <button type="button" className="btn btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
@@ -235,7 +197,6 @@ export default function ManageAcademicYears() {
                 </div>
             )}
 
-            {/* Semester advance modal */}
             {semModal && (
                 <div className="modal-overlay" onClick={() => setSemModal(null)}>
                     <div className="modal" style={{ maxWidth: 380 }} onClick={(e) => e.stopPropagation()}>
@@ -245,14 +206,12 @@ export default function ManageAcademicYears() {
                         </div>
                         <div className="modal__body">
                             <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-md)' }}>
-                                This will update all sections under this academic year to the selected semester.
+                                Updates all sections under this academic year to the selected semester.
                             </p>
                             <div className="form-group">
                                 <label className="form-label">Set current semester to</label>
                                 <select className="form-input" value={newSemester} onChange={(e) => setNewSemester(e.target.value)}>
-                                    {Array.from({ length: semModal.totalSemesters }, (_, i) => i + 1).map((n) => (
-                                        <option key={n} value={n}>Semester {n}</option>
-                                    ))}
+                                    {Array.from({ length: semModal.totalSemesters }, (_, i) => i + 1).map((n) => <option key={n} value={n}>Semester {n}</option>)}
                                 </select>
                             </div>
                             <div className="modal__footer">

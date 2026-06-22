@@ -9,6 +9,10 @@ const mongoose = require('mongoose');
  * section (via studentSectionController.assignStudent).
  *
  * Created by admin for bucket subjects via subjectEnrollmentController.
+ *
+ * bucket is now a free-form string matching Subject.bucket — schools define
+ * their own bucket names per stream/grade (e.g. "scienceBucket", "ictBucket",
+ * "commerceBucket", "religion", "firstLang", etc.)
  */
 const subjectEnrollmentSchema = new mongoose.Schema(
     {
@@ -49,13 +53,13 @@ const subjectEnrollmentSchema = new mongoose.Schema(
             type:    String,
             enum:    ['mandatory', 'bucket'],
             default: 'mandatory',
-            // 'mandatory' → auto-assigned; 'bucket' → admin selected for student
         },
         bucket: {
+            // Mirrors subject.bucket for quick queries.
+            // Free-form: null for mandatory, any string for electives.
             type:    String,
-            enum:    ['bucket1', 'religion', 'firstLang', 'secondLang', null],
             default: null,
-            // Mirrors subject.bucket for quick queries (e.g. "which religion did this student pick?")
+            trim:    true,
         },
 
         // ── Status ───────────────────────────────────────────────────────────────
@@ -65,7 +69,7 @@ const subjectEnrollmentSchema = new mongoose.Schema(
             default: 'active',
         },
 
-        // ── Grade/marks (filled at end of semester/year) ──────────────────────────
+        // ── Grade/marks ──────────────────────────────────────────────────────────
         marks: {
             type:    Number,
             default: null,
@@ -81,7 +85,6 @@ const subjectEnrollmentSchema = new mongoose.Schema(
         },
 
         assignedBy: {
-            // Admin who assigned bucket subject (null for auto-assigned mandatory)
             type:    mongoose.Schema.Types.ObjectId,
             ref:     'User',
             default: null,
@@ -94,10 +97,10 @@ const subjectEnrollmentSchema = new mongoose.Schema(
 subjectEnrollmentSchema.index({ student: 1, subject: 1, academicYear: 1 }, { unique: true });
 
 // One bucket selection per student per bucket per academic year
+// (bucket is a free-form string; sparse so null buckets are excluded)
 subjectEnrollmentSchema.index(
     { student: 1, bucket: 1, academicYear: 1 },
     { unique: true, sparse: true }
-    // sparse: true because bucket is null for mandatory subjects
 );
 
 subjectEnrollmentSchema.index({ section: 1, academicYear: 1, status: 1 });

@@ -4,78 +4,88 @@ import { useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import NotificationBell from '../../components/NotificationBell';
 import { fetchStudentReport } from '../../store/slices/reportSlice';
-import { fetchMyEnrollments } from '../../store/slices/enrollmentSlice';
 import { fetchMyAttendance } from '../../store/slices/attendanceSlice';
+import { fetchMySubjects } from '../../store/slices/subjectEnrollmentSlice';
+import { fetchActiveYear } from '../../store/slices/academicYearSlice';
 import './StudentDashboard.css';
 
 export default function StudentDashboard() {
-    const dispatch = useDispatch();
-    const navigate = useNavigate();
-    const { user } = useSelector((s) => s.auth);
+    const dispatch  = useDispatch();
+    const navigate  = useNavigate();
+
+    const { user }                                   = useSelector((s) => s.auth);
     const { studentReport: report, loading: reportLoading } = useSelector((s) => s.reports);
-    const { list: enrollments } = useSelector((s) => s.enrollments);
-    const { myRecords } = useSelector((s) => s.attendance);
+    const { myRecords }                              = useSelector((s) => s.attendance);
+    const { myEnrollments, myMandatory, myBuckets, loading: subjectsLoading }
+        = useSelector((s) => s.subjectEnrollments);
+    const { active: activeYear }                     = useSelector((s) => s.academicYears);
+
+    useEffect(() => {
+        dispatch(fetchActiveYear());
+    }, [dispatch]);
 
     useEffect(() => {
         if (user?._id) {
             dispatch(fetchStudentReport(user._id));
-            dispatch(fetchMyEnrollments());
             dispatch(fetchMyAttendance());
         }
     }, [dispatch, user?._id]);
 
-    const activeEnrollments = enrollments.filter((e) => e.status === 'active').length;
-    const overallAtt = report?.overallAttendance ?? null;
-    const attColor = overallAtt === null
-        ? 'var(--color-text-muted)'
-        : overallAtt >= 75 ? '#059669'
-            : overallAtt >= 60 ? '#D97706'
-                : '#DC2626';
+    // Fetch subjects once we have the active year
+    useEffect(() => {
+        if (activeYear?._id) {
+            dispatch(fetchMySubjects({ academicYear: activeYear._id }));
+        }
+    }, [dispatch, activeYear?._id]);
 
-    const pendingAssignments = report?.submissions
-        ? 0   // derive from LMS in a later sprint; placeholder
-        : null;
+    const overallAtt = report?.overallAttendance ?? null;
+    const attColor   =
+        overallAtt === null       ? 'var(--color-text-muted)' :
+            overallAtt >= 75          ? '#059669' :
+                overallAtt >= 60          ? '#D97706' :
+                    '#DC2626';
+
+    const totalSubjects  = myEnrollments?.length ?? 0;
+    const bucketsAssigned = myBuckets?.length    ?? 0;
 
     const stats = [
         {
-            label: 'Enrolled courses',
-            value: reportLoading ? '…' : activeEnrollments,
-            sub: 'Active this semester',
-            icon: '📚',
+            label:     'My subjects',
+            value:     subjectsLoading ? '…' : totalSubjects,
+            sub:       `${myMandatory?.length ?? 0} mandatory · ${bucketsAssigned} elective`,
+            icon:      '📚',
             iconColor: '#4F46E5',
-            iconBg: '#EEF2FF',
-            onClick: () => navigate('/student/courses'),
+            iconBg:    '#EEF2FF',
+            onClick:   () => navigate('/student/subjects'),
         },
         {
-            label: 'Attendance',
-            value: reportLoading ? '…' : overallAtt !== null ? `${overallAtt}%` : '—',
-            sub: `${report?.presentClasses ?? 0} / ${report?.totalClasses ?? 0} classes`,
-            icon: '✅',
+            label:     'Attendance',
+            value:     reportLoading ? '…' : overallAtt !== null ? `${overallAtt}%` : '—',
+            sub:       `${report?.presentClasses ?? 0} / ${report?.totalClasses ?? 0} classes`,
+            icon:      '✅',
             iconColor: attColor,
-            iconBg: overallAtt !== null && overallAtt < 75 ? '#FEF2F2' : '#ECFDF5',
-            onClick: () => navigate('/student/attendance'),
+            iconBg:    overallAtt !== null && overallAtt < 75 ? '#FEF2F2' : '#ECFDF5',
+            onClick:   () => navigate('/student/attendance'),
         },
         {
-            label: 'Avg assignment score',
-            value: reportLoading ? '…' : report?.avgMarks > 0 ? `${report.avgMarks}%` : '—',
-            sub: `${report?.submissions?.length ?? 0} graded`,
-            icon: '📝',
+            label:     'Avg assignment score',
+            value:     reportLoading ? '…' : report?.avgMarks > 0 ? `${report.avgMarks}%` : '—',
+            sub:       `${report?.submissions?.length ?? 0} graded`,
+            icon:      '📝',
             iconColor: '#7C3AED',
-            iconBg: '#F5F3FF',
-            onClick: () => navigate('/assignments'),
+            iconBg:    '#F5F3FF',
+            onClick:   () => navigate('/assignments'),
         },
         {
-            label: 'Avg quiz score',
-            value: reportLoading ? '…' : report?.avgQuizScore > 0 ? `${report.avgQuizScore}%` : '—',
-            sub: `${report?.quizAttempts?.length ?? 0} attempts`,
-            icon: '🎯',
+            label:     'Avg quiz score',
+            value:     reportLoading ? '…' : report?.avgQuizScore > 0 ? `${report.avgQuizScore}%` : '—',
+            sub:       `${report?.quizAttempts?.length ?? 0} attempts`,
+            icon:      '🎯',
             iconColor: '#D97706',
-            iconBg: '#FFFBEB',
-            onClick: () => navigate('/student/grades'),
+            iconBg:    '#FFFBEB',
+            onClick:   () => navigate('/student/grades'),
         },
     ];
-
-    const recentCourses = enrollments.filter((e) => e.status === 'active').slice(0, 4);
 
     const greetingHour = new Date().getHours();
     const greeting =
@@ -83,10 +93,14 @@ export default function StudentDashboard() {
             greetingHour < 17 ? 'Good afternoon' :
                 'Good evening';
 
+    // Show first 5 mandatory subjects in the recent list
+    const recentSubjects = (myMandatory ?? []).slice(0, 5);
+
     return (
         <div className="app-shell">
             <Sidebar />
             <div className="main-content">
+
                 {/* Topbar */}
                 <div className="topbar">
                     <h1 className="topbar__title">Dashboard</h1>
@@ -97,11 +111,17 @@ export default function StudentDashboard() {
                 </div>
 
                 <div className="page-body">
+
                     {/* Welcome banner */}
                     <div className="dashboard-welcome">
                         <div className="dashboard-welcome__text">
                             <h2>{greeting}, {user?.name?.split(' ')[0]} 👋</h2>
-                            <p>Here's your academic overview for today.</p>
+                            <p>
+                                {activeYear
+                                    ? `${activeYear.name} · Semester ${activeYear.currentSemester}`
+                                    : 'Here\'s your academic overview for today.'
+                                }
+                            </p>
                         </div>
                         {overallAtt !== null && overallAtt < 75 && (
                             <div className="alert alert-error" style={{ margin: 0 }}>
@@ -134,60 +154,106 @@ export default function StudentDashboard() {
 
                     {/* Content grid */}
                     <div className="content-grid">
-                        {/* Recent courses */}
+
+                        {/* My subjects card */}
                         <div className="card">
                             <div className="card-header">
-                                <span className="card-title">My courses</span>
+                                <span className="card-title">My subjects</span>
                                 <button
                                     className="btn btn-outline btn-sm"
-                                    onClick={() => navigate('/student/courses')}
+                                    onClick={() => navigate('/student/subjects')}
                                 >
                                     View all
                                 </button>
                             </div>
 
-                            {recentCourses.length === 0 ? (
+                            {subjectsLoading ? (
+                                <div className="empty-state">
+                                    <div className="spinner" style={{ width: 28, height: 28, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} />
+                                </div>
+                            ) : recentSubjects.length === 0 ? (
                                 <div className="empty-state">
                                     <div className="empty-state__icon">📚</div>
-                                    <p>No courses enrolled yet.</p>
-                                    <button
-                                        className="btn btn-primary"
-                                        style={{ marginTop: 'var(--space-md)' }}
-                                        onClick={() => navigate('/courses')}
-                                    >
-                                        Browse courses
-                                    </button>
+                                    <p>No subjects enrolled yet.</p>
+                                    <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                                        Your subjects will appear here once your administrator assigns you to a class.
+                                    </p>
                                 </div>
                             ) : (
                                 <div className="dashboard-course-list">
-                                    {recentCourses.map((e) => (
-                                        <div
-                                            key={e._id}
-                                            className="dashboard-course-item"
-                                            onClick={() => navigate(`/courses/${e.course?._id}`)}
-                                        >
-                                            <div className="dashboard-course-item__code">
-                                                {e.course?.code}
+                                    {recentSubjects.map((enrollment) => {
+                                        const subj = enrollment.subject;
+                                        return (
+                                            <div
+                                                key={enrollment._id}
+                                                className="dashboard-course-item"
+                                                onClick={() => navigate('/student/subjects')}
+                                            >
+                                                <div className="dashboard-course-item__code">
+                                                    {subj?.code}
+                                                </div>
+                                                <div className="dashboard-course-item__info">
+                                                    <div className="dashboard-course-item__title">
+                                                        {subj?.name}
+                                                    </div>
+                                                    <div className="dashboard-course-item__dept">
+                                                        {subj?.teacher?.name
+                                                            ? `👤 ${subj.teacher.name}`
+                                                            : 'No teacher assigned'
+                                                        }
+                                                    </div>
+                                                </div>
+                                                <span
+                                                    className="badge"
+                                                    style={{ background: '#EEF2FF', color: '#4F46E5', flexShrink: 0 }}
+                                                >
+                          Core
+                        </span>
                                             </div>
+                                        );
+                                    })}
+
+                                    {/* Bucket status row */}
+                                    {myBuckets && myBuckets.length > 0 && (
+                                        <div
+                                            className="dashboard-course-item"
+                                            onClick={() => navigate('/student/subjects')}
+                                            style={{ borderTop: '2px solid var(--color-border)', marginTop: 'var(--space-xs)' }}
+                                        >
+                                            <div style={{ fontSize: '1.25rem' }}>🎯</div>
                                             <div className="dashboard-course-item__info">
                                                 <div className="dashboard-course-item__title">
-                                                    {e.course?.title}
+                                                    Elective subjects
                                                 </div>
                                                 <div className="dashboard-course-item__dept">
-                                                    {e.course?.department}
+                                                    {myBuckets.map((e) => e.subject?.name).filter(Boolean).join(', ')}
                                                 </div>
                                             </div>
                                             <span
                                                 className="badge"
-                                                style={{
-                                                    background: '#ECFDF5',
-                                                    color: '#059669',
-                                                }}
+                                                style={{ background: '#F5F3FF', color: '#7C3AED', flexShrink: 0 }}
                                             >
-                        Active
+                        {bucketsAssigned} / 4
                       </span>
                                         </div>
-                                    ))}
+                                    )}
+
+                                    {/* Pending buckets warning */}
+                                    {bucketsAssigned < 4 && (
+                                        <div style={{
+                                            padding: 'var(--space-sm) var(--space-md)',
+                                            background: '#FFFBEB',
+                                            borderRadius: 'var(--radius-md)',
+                                            fontSize: '0.8125rem',
+                                            color: '#D97706',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 'var(--space-sm)',
+                                            marginTop: 'var(--space-xs)',
+                                        }}>
+                                            ⚠ {4 - bucketsAssigned} elective bucket{4 - bucketsAssigned !== 1 ? 's' : ''} not yet assigned
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -199,12 +265,13 @@ export default function StudentDashboard() {
                             </div>
                             <div className="quick-links">
                                 {[
-                                    { label: 'Browse all courses', icon: '🔍', path: '/courses', color: '#4F46E5', bg: '#EEF2FF' },
-                                    { label: 'My assignments', icon: '📝', path: '/assignments', color: '#7C3AED', bg: '#F5F3FF' },
-                                    { label: 'Attendance record', icon: '✅', path: '/student/attendance', color: '#059669', bg: '#ECFDF5' },
-                                    { label: 'Fee statements', icon: '💳', path: '/student/fees', color: '#D97706', bg: '#FFFBEB' },
-                                    { label: 'My grades', icon: '📊', path: '/student/grades', color: '#2563EB', bg: '#EFF6FF' },
-                                    { label: 'Announcements', icon: '📢', path: '/announcements', color: '#DC2626', bg: '#FEF2F2' },
+                                    { label: 'My subjects',       icon: '📚', path: '/student/subjects',    color: '#4F46E5', bg: '#EEF2FF' },
+                                    { label: 'My assignments',    icon: '📝', path: '/assignments',          color: '#7C3AED', bg: '#F5F3FF' },
+                                    { label: 'Attendance record', icon: '✅', path: '/student/attendance',  color: '#059669', bg: '#ECFDF5' },
+                                    { label: 'Fee statements',    icon: '💳', path: '/student/fees',        color: '#D97706', bg: '#FFFBEB' },
+                                    { label: 'My grades',         icon: '📊', path: '/student/grades',      color: '#2563EB', bg: '#EFF6FF' },
+                                    { label: 'Timetable',         icon: '🗓', path: '/student/timetable',   color: '#0F766E', bg: '#F0FDFA' },
+                                    { label: 'Announcements',     icon: '📢', path: '/announcements',       color: '#DC2626', bg: '#FEF2F2' },
                                 ].map((link) => (
                                     <button
                                         key={link.path}
@@ -223,6 +290,7 @@ export default function StudentDashboard() {
                                 ))}
                             </div>
                         </div>
+
                     </div>
                 </div>
             </div>

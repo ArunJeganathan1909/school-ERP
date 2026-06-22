@@ -2,32 +2,13 @@ const SubjectEnrollment = require('../models/SubjectEnrollment');
 const Subject           = require('../models/Subject');
 const StudentSection    = require('../models/StudentSection');
 
-// ─── Internal helper (also called from studentSectionController) ──────────────
-/**
- * Auto-enroll a student in all mandatory subjects for their grade/section.
- * Called when a student is first assigned (or re-assigned) to a section.
- *
- * @param {Object} params
- * @param {ObjectId} params.studentId
- * @param {ObjectId} params.sectionId
- * @param {ObjectId} params.gradeId
- * @param {Number}   params.gradeNumber   - e.g. 7
- * @param {ObjectId} params.academicYearId
- * @param {Number}   params.semester
- * @returns {{ enrolled: number, skipped: number }}
- */
+// ─── Internal helper ──────────────────────────────────────────────────────────
 exports.autoEnrollMandatory = async ({
-                                         studentId,
-                                         sectionId,
-                                         gradeId,
-                                         gradeNumber,
-                                         academicYearId,
-                                         semester = 1,
+                                         studentId, sectionId, gradeId, gradeNumber, academicYearId, semester = 1,
                                      }) => {
     const { gradeRangeFor } = require('./subjectController');
     const range = gradeRangeFor(gradeNumber);
 
-    // Find all mandatory subjects for this grade/section/year
     const mandatorySubjects = await Subject.find({
         isMandatory:  true,
         isActive:     true,
@@ -38,9 +19,7 @@ exports.autoEnrollMandatory = async ({
         ],
     });
 
-    let enrolled = 0;
-    let skipped  = 0;
-
+    let enrolled = 0, skipped = 0;
     for (const subj of mandatorySubjects) {
         try {
             await SubjectEnrollment.create({
@@ -56,36 +35,26 @@ exports.autoEnrollMandatory = async ({
             });
             enrolled++;
         } catch (err) {
-            if (err.code === 11000) {
-                skipped++; // already enrolled — fine on re-assign
-            } else {
-                throw err;
-            }
+            if (err.code === 11000) { skipped++; }
+            else throw err;
         }
     }
-
     return { enrolled, skipped };
 };
 
 // ─── POST /api/subject-enrollments/bucket ─────────────────────────────────────
-// Admin assigns a student's bucket subject choice
 exports.assignBucketSubject = async (req, res) => {
     try {
         const { studentId, subjectId, academicYearId } = req.body;
 
-        // Validate subject
         const subject = await Subject.findById(subjectId);
         if (!subject) {
             return res.status(404).json({ success: false, message: 'Subject not found' });
         }
         if (subject.isMandatory || !subject.bucket) {
-            return res.status(400).json({
-                success: false,
-                message: 'This subject is not a bucket elective',
-            });
+            return res.status(400).json({ success: false, message: 'This subject is not a bucket elective' });
         }
 
-        // Validate student is in a section for this academic year
         const studentSection = await StudentSection.findOne({
             student:      studentId,
             academicYear: academicYearId,
@@ -99,7 +68,6 @@ exports.assignBucketSubject = async (req, res) => {
             });
         }
 
-        // Check if student already has a selection for this bucket
         const existingBucket = await SubjectEnrollment.findOne({
             student:      studentId,
             bucket:       subject.bucket,
@@ -110,7 +78,7 @@ exports.assignBucketSubject = async (req, res) => {
         if (existingBucket) {
             return res.status(400).json({
                 success: false,
-                message: `Student already has "${existingBucket.subject.name}" selected for the ${subject.bucket} bucket. Drop it first to change.`,
+                message: `Student already has "${existingBucket.subject.name}" for the "${subject.bucket}" bucket. Drop it first or use the change endpoint.`,
                 existing: existingBucket,
             });
         }
@@ -137,17 +105,13 @@ exports.assignBucketSubject = async (req, res) => {
         res.status(201).json({ success: true, enrollment });
     } catch (err) {
         if (err.code === 11000) {
-            return res.status(400).json({
-                success: false,
-                message: 'Student is already enrolled in this subject',
-            });
+            return res.status(400).json({ success: false, message: 'Student is already enrolled in this subject' });
         }
         res.status(500).json({ success: false, message: err.message });
     }
 };
 
 // ─── PUT /api/subject-enrollments/bucket/change ──────────────────────────────
-// Admin changes a student's bucket selection (drops old, assigns new)
 exports.changeBucketSubject = async (req, res) => {
     try {
         const { studentId, newSubjectId, academicYearId } = req.body;
@@ -157,18 +121,14 @@ exports.changeBucketSubject = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid bucket subject' });
         }
 
-        // Drop existing selection for this bucket
         const dropped = await SubjectEnrollment.findOneAndUpdate(
             { student: studentId, bucket: newSubject.bucket, academicYear: academicYearId, status: 'active' },
             { $set: { status: 'dropped' } },
             { new: true }
         );
 
-        // Assign new selection
         const studentSection = await StudentSection.findOne({
-            student:      studentId,
-            academicYear: academicYearId,
-            status:       'active',
+            student: studentId, academicYear: academicYearId, status: 'active',
         });
 
         const enrollment = await SubjectEnrollment.create({
@@ -191,7 +151,7 @@ exports.changeBucketSubject = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            message: `Bucket changed from "${dropped?.subject}" to "${newSubject.name}"`,
+            message: `Bucket "${newSubject.bucket}" changed to "${newSubject.name}"`,
             enrollment,
             dropped,
         });
@@ -201,29 +161,22 @@ exports.changeBucketSubject = async (req, res) => {
 };
 
 // ─── GET /api/subject-enrollments/student/:studentId ─────────────────────────
-// All subjects (mandatory + bucket) for a student in a given academic year
 exports.getStudentSubjects = async (req, res) => {
     try {
         const { academicYear, semester } = req.query;
-        const filter = {
-            student: req.params.studentId,
-            status:  'active',
-        };
+        const filter = { student: req.params.studentId, status: 'active' };
         if (academicYear) filter.academicYear = academicYear;
         if (semester)     filter.semester     = Number(semester);
 
         const enrollments = await SubjectEnrollment.find(filter)
-            .populate('subject', 'name code bucket isMandatory schedule teacher credits')
-            .populate('section', 'name')
             .populate({
                 path:   'subject',
                 select: 'name code bucket isMandatory credits semester schedule',
                 populate: { path: 'teacher', select: 'name email profilePhoto' },
             })
+            .populate('section', 'name')
             .sort({ enrollmentType: 1, bucket: 1 });
-        // mandatory first, then buckets
 
-        // Group for easy frontend consumption
         const mandatory = enrollments.filter(e => e.enrollmentType === 'mandatory');
         const buckets   = enrollments.filter(e => e.enrollmentType === 'bucket');
 
@@ -234,14 +187,10 @@ exports.getStudentSubjects = async (req, res) => {
 };
 
 // ─── GET /api/subject-enrollments/my ─────────────────────────────────────────
-// Student views their own subject list
 exports.getMySubjects = async (req, res) => {
     try {
         const { academicYear, semester } = req.query;
-        const filter = {
-            student: req.user._id,
-            status:  'active',
-        };
+        const filter = { student: req.user._id, status: 'active' };
         if (academicYear) filter.academicYear = academicYear;
         if (semester)     filter.semester     = Number(semester);
 
@@ -264,7 +213,6 @@ exports.getMySubjects = async (req, res) => {
 };
 
 // ─── GET /api/subject-enrollments/subject/:subjectId ─────────────────────────
-// Admin/teacher: all students enrolled in a subject
 exports.getSubjectStudents = async (req, res) => {
     try {
         const { academicYear, status = 'active' } = req.query;
@@ -283,21 +231,57 @@ exports.getSubjectStudents = async (req, res) => {
 };
 
 // ─── GET /api/subject-enrollments/section/:sectionId/pending-buckets ─────────
-// Returns students who are missing bucket selections — useful admin checklist
+/**
+ * Now DYNAMIC: instead of hardcoding ['bucket1','religion','firstLang','secondLang'],
+ * we look up which buckets actually exist for this section's grade + academic year.
+ * This means a Science-stream A/L section will check "scienceBucket" & "ictBucket",
+ * while a Commerce section checks "commerceBucket" & "ictBucket", etc.
+ */
 exports.getPendingBucketSelections = async (req, res) => {
     try {
         const { academicYearId } = req.query;
-        const BUCKETS = ['bucket1', 'religion', 'firstLang', 'secondLang'];
 
-        // Get all active students in this section
-        const StudentSection = require('../models/StudentSection');
+        // Resolve section → grade → gradeRange, then find all bucket names for this scope
+        const Section = require('../models/Section');
+        const { gradeRangeFor } = require('./subjectController');
+
+        const section = await Section.findById(req.params.sectionId).populate('grade', 'gradeNumber');
+        if (!section) {
+            return res.status(404).json({ success: false, message: 'Section not found' });
+        }
+
+        const range = gradeRangeFor(section.grade?.gradeNumber);
+
+        // Find all distinct bucket names for this section/grade scope
+        const bucketFilter = {
+            isMandatory:  false,
+            isActive:     true,
+            bucket:       { $ne: null },
+            academicYear: academicYearId,
+            $or: [
+                { section: req.params.sectionId },
+                { grade: section.grade._id },
+            ],
+        };
+        if (range) bucketFilter.$or.push({ gradeRange: range });
+
+        const BUCKETS = await Subject.distinct('bucket', bucketFilter);
+
+        if (BUCKETS.length === 0) {
+            return res.status(200).json({
+                success: true,
+                pending: [],
+                total: 0,
+                message: 'No bucket subjects defined for this section yet.',
+            });
+        }
+
         const students = await StudentSection.find({
             section:      req.params.sectionId,
             academicYear: academicYearId,
             status:       'active',
         }).populate('student', 'name email rollNumber');
 
-        // For each student, check which buckets are unfilled
         const results = [];
         for (const ss of students) {
             const filledBuckets = await SubjectEnrollment.distinct('bucket', {
@@ -318,13 +302,13 @@ exports.getPendingBucketSelections = async (req, res) => {
             }
         }
 
-        res.status(200).json({ success: true, pending: results, total: results.length });
+        res.status(200).json({ success: true, pending: results, total: results.length, buckets: BUCKETS });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
 };
 
-// ─── PUT /api/subject-enrollments/:id/marks — teacher/admin ──────────────────
+// ─── PUT /api/subject-enrollments/:id/marks ───────────────────────────────────
 exports.enterMarks = async (req, res) => {
     try {
         const { marks, grade_letter, remarks } = req.body;
@@ -347,7 +331,7 @@ exports.enterMarks = async (req, res) => {
     }
 };
 
-// ─── GET /api/subject-enrollments — admin: all with filters ──────────────────
+// ─── GET /api/subject-enrollments ─────────────────────────────────────────────
 exports.getAll = async (req, res) => {
     try {
         const { student, subject, section, academicYear, status, bucket, page = 1, limit = 30 } = req.query;
@@ -360,15 +344,12 @@ exports.getAll = async (req, res) => {
         if (bucket)       filter.bucket       = bucket;
 
         const skip = (Number(page) - 1) * Number(limit);
-
         const [enrollments, total] = await Promise.all([
             SubjectEnrollment.find(filter)
                 .populate('student', 'name email rollNumber')
                 .populate('subject', 'name code bucket isMandatory')
                 .populate('section', 'name')
-                .skip(skip)
-                .limit(Number(limit))
-                .sort({ createdAt: -1 }),
+                .skip(skip).limit(Number(limit)).sort({ createdAt: -1 }),
             SubjectEnrollment.countDocuments(filter),
         ]);
 

@@ -14,10 +14,20 @@ const scheduleSchema = new mongoose.Schema(
  * BUCKET DEFINITIONS
  * ─────────────────────────────────────────────────────────────────────────────
  * null          → mandatory subject (auto-assigned to all students in grade)
- * "bucket1"     → Art / Music / Dance  (pick 1)
- * "religion"    → Hindu / Islam / Buddhist / Christianity  (pick 1)
- * "firstLang"   → Tamil / Sinhala  (pick 1)
- * "secondLang"  → Tamil / Sinhala  (pick 1)
+ *
+ * Buckets are now FREE-FORM strings — no longer a fixed enum.
+ * This supports stream-specific elective groups, e.g.:
+ *
+ *   A/L Science stream : "scienceBucket" (Chemistry / Physics / Bio)
+ *                         "ictBucket"    (ICT / etc.)
+ *   A/L Commerce stream: "commerceBucket" (Economics / Business Studies)
+ *                         "ictBucket"
+ *   A/L Maths stream   : "mathsBucket"  (Combined Maths / etc.)
+ *   Grade 10-11        : school-defined custom buckets
+ *   Grade 6-9          : school-defined custom buckets
+ *
+ * Legacy built-in buckets still work: "bucket1", "religion", "firstLang",
+ * "secondLang" — they are just ordinary string values now.
  *
  * GRADE RANGES (used for auto-assignment of mandatory subjects)
  * ─────────────────────────────────────────────────────────────────────────────
@@ -47,7 +57,6 @@ const subjectSchema = new mongoose.Schema(
             type:    mongoose.Schema.Types.ObjectId,
             ref:     'Section',
             default: null,
-            // When set: subject belongs to one specific section (e.g. 6A Maths)
         },
         grade: {
             type:    mongoose.Schema.Types.ObjectId,
@@ -68,10 +77,13 @@ const subjectSchema = new mongoose.Schema(
             // false → student (via admin) must choose from the bucket
         },
         bucket: {
+            // Free-form string — any label the school defines per stream/grade.
+            // null = mandatory subject.
+            // Examples: "scienceBucket", "commerceBucket", "ictBucket",
+            //           "religion", "firstLang", "secondLang", "bucket1"
             type:    String,
-            enum:    ['bucket1', 'religion', 'firstLang', 'secondLang', null],
             default: null,
-            // null = mandatory; otherwise names the elective group this belongs to
+            trim:    true,
         },
 
         // ── Grade range for auto-assignment ──────────────────────────────────────
@@ -79,8 +91,6 @@ const subjectSchema = new mongoose.Schema(
             type:    String,
             enum:    ['1-5', '6-9', '10-11', '12-13', null],
             default: null,
-            // e.g. "6-9" means this subject template is mandatory for all grades 6–9
-            // Used when creating a subject that spans multiple grades automatically
         },
 
         // ── Teacher & scheduling ─────────────────────────────────────────────────
