@@ -10,12 +10,11 @@ exports.autoEnrollMandatory = async ({
     const range = gradeRangeFor(gradeNumber);
 
     const mandatorySubjects = await Subject.find({
-        isMandatory:  true,
-        isActive:     true,
-        academicYear: academicYearId,
+        isMandatory: true,
+        isActive:    true,
         $or: [
-            { gradeRange: range },
-            { section:    sectionId },
+            { gradeRange: range },                            // Mode A — year-independent
+            { grade: gradeId, academicYear: academicYearId },  // Mode B — year-scoped (A/L)
         ],
     });
 
@@ -23,20 +22,14 @@ exports.autoEnrollMandatory = async ({
     for (const subj of mandatorySubjects) {
         try {
             await SubjectEnrollment.create({
-                student:        studentId,
-                subject:        subj._id,
-                section:        sectionId,
-                grade:          gradeId,
-                academicYear:   academicYearId,
-                semester:       subj.semester || semester,
-                enrollmentType: 'mandatory',
-                bucket:         null,
-                status:         'active',
+                student: studentId, subject: subj._id, section: sectionId,
+                grade: gradeId, academicYear: academicYearId,
+                semester: subj.semester || semester,
+                enrollmentType: 'mandatory', bucket: null, status: 'active',
             });
             enrolled++;
         } catch (err) {
-            if (err.code === 11000) { skipped++; }
-            else throw err;
+            if (err.code === 11000) { skipped++; } else throw err;
         }
     }
     return { enrolled, skipped };

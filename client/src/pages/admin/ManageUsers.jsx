@@ -215,63 +215,120 @@ export default function ManageUsers() {
                             <span className="user-summary-strip__label">Inactive</span>
                         </div>
                     </div>
-
                     {/* Filters row */}
                     <div className="user-filters">
+
+                        {/* Search */}
                         <form className="user-filters__search" onSubmit={handleSearch}>
                             <input
                                 className="form-input"
                                 type="text"
-                                placeholder="Search by name or email…"
+                                placeholder="Search by name or email..."
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                             />
-                            <button type="submit" className="btn btn-primary btn-sm">Search</button>
+
+                            <button
+                                type="submit"
+                                className="btn btn-primary"
+                            >
+                                Search
+                            </button>
+
                             {search && (
                                 <button
                                     type="button"
-                                    className="btn btn-ghost btn-sm"
-                                    onClick={() => { setSearch(''); setPage(1); setTimeout(fetchUsers, 0); }}
+                                    className="btn btn-ghost"
+                                    onClick={() => {
+                                        setSearch('');
+                                        setPage(1);
+                                        setTimeout(fetchUsers, 0);
+                                    }}
                                 >
                                     Clear
                                 </button>
                             )}
                         </form>
 
-                        <div className="user-filters__tabs">
-                            {/* Role filter */}
-                            {['', ...ROLES].map((r) => (
-                                <button
-                                    key={r || 'all'}
-                                    className={`course-status-tab ${roleFilter === r ? 'active' : ''}`}
-                                    onClick={() => { setRoleFilter(r); setPage(1); }}
-                                    style={r && roleFilter === r
-                                        ? { background: ROLE_STYLES[r].color, borderColor: ROLE_STYLES[r].color }
-                                        : {}
-                                    }
-                                >
-                                    {r || 'All roles'}
-                                </button>
-                            ))}
-                        </div>
+                        {/* Role + Status Row */}
+                        <div className="user-filters-row">
 
-                        <div className="user-filters__tabs">
-                            {/* Status filter */}
-                            {[
-                                { val: '', label: 'All status' },
-                                { val: 'active', label: '✓ Active' },
-                                { val: 'inactive', label: '✕ Inactive' },
-                            ].map((s) => (
-                                <button
-                                    key={s.val}
-                                    className={`course-status-tab ${statusFilter === s.val ? 'active' : ''}`}
-                                    onClick={() => { setStatus(s.val); setPage(1); }}
-                                >
-                                    {s.label}
-                                </button>
-                            ))}
+                            {/* User Type */}
+                            <div className="user-filter-group">
+            <span className="user-filter-title">
+                User Type
+            </span>
+
+                                <div className="user-filters__tabs">
+
+                                    {['', ...ROLES].map((r) => (
+                                        <button
+                                            key={r || 'all'}
+                                            type="button"
+                                            className={`course-status-tab ${
+                                                roleFilter === r ? 'active' : ''
+                                            }`}
+                                            onClick={() => {
+                                                setRoleFilter(r);
+                                                setPage(1);
+                                            }}
+                                            style={r && roleFilter === r
+                                                ? { background: ROLE_STYLES[r].color, borderColor: ROLE_STYLES[r].color }
+                                                : {}
+                                            }
+                                        >
+                                            {r
+                                                ? r.charAt(0).toUpperCase() + r.slice(1)
+                                                : 'All Roles'}
+                                        </button>
+                                    ))}
+
+                                </div>
+                            </div>
+
+                            {/* Status */}
+                            <div className="user-filter-group">
+            <span className="user-filter-title">
+                Status
+            </span>
+
+                                <div className="user-filters__tabs">
+
+                                    {[
+                                        {
+                                            val: '',
+                                            label: 'All Status'
+                                        },
+                                        {
+                                            val: 'active',
+                                            label: '✓ Active'
+                                        },
+                                        {
+                                            val: 'inactive',
+                                            label: '✕ Inactive'
+                                        }
+                                    ].map((s) => (
+                                        <button
+                                            key={s.val}
+                                            type="button"
+                                            className={`course-status-tab ${
+                                                statusFilter === s.val ? 'active' : ''
+                                            }`}
+                                            onClick={() => {
+                                                setStatus(s.val);
+                                                setPage(1);
+                                            }}
+                                        >
+                                            {s.label}
+                                        </button>
+                                    ))}
+
+                                </div>
+                            </div>
+
                         </div>
                     </div>
+
 
                     {/* Error */}
                     {error && (
