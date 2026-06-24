@@ -1,7 +1,5 @@
-const Subject = require('../models/Subject');
+const Subject           = require('../models/Subject');
 const SubjectEnrollment = require('../models/SubjectEnrollment');
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function gradeRangeFor(gradeNumber) {
     if (gradeNumber >= 1  && gradeNumber <= 5)  return '1-5';
@@ -12,26 +10,18 @@ function gradeRangeFor(gradeNumber) {
 }
 exports.gradeRangeFor = gradeRangeFor;
 
-/**
- * Returns mandatory subjects for a student, combining:
- *   - Mode A: subjects matching the student's gradeRange (year-independent)
- *   - Mode B: subjects matching the student's specific Grade document
- */
 exports.getMandatorySubjectsForGrade = async (gradeNumber, academicYearId, gradeId) => {
     const range = gradeRangeFor(gradeNumber);
     return Subject.find({
         isMandatory: true,
         isActive:    true,
         $or: [
-            { gradeRange: range },                          // Mode A — year-independent
-            { grade: gradeId, academicYear: academicYearId }, // Mode B — year-scoped
+            { gradeRange: range },
+            { grade: gradeId, academicYear: academicYearId },
         ],
     });
 };
 
-/**
- * GET /api/subjects/buckets-for-section/:sectionId?academicYear=
- */
 exports.getBucketsForSection = async (req, res) => {
     try {
         const { academicYear } = req.query;
@@ -64,22 +54,19 @@ exports.getBucketsForSection = async (req, res) => {
 // ─── GET /api/subjects ────────────────────────────────────────────────────────
 exports.getSubjects = async (req, res) => {
     try {
-        const { grade, gradeRange, academicYear, semester, teacher, bucket, isMandatory } = req.query;
+        const { grade, gradeRange, academicYear, semester, bucket, isMandatory } = req.query;
         const filter = {};
 
         if (gradeRange)   filter.gradeRange   = gradeRange;
         if (grade)        filter.grade        = grade;
         if (academicYear) filter.academicYear = academicYear;
         if (semester)     filter.semester     = Number(semester);
-        if (teacher)      filter.teacher      = teacher;
-        if (bucket)        filter.bucket       = bucket;
+        if (bucket)       filter.bucket       = bucket;
         if (isMandatory !== undefined) filter.isMandatory = isMandatory === 'true';
 
         const subjects = await Subject.find(filter)
-            .populate('section',      'name')
             .populate('grade',        'name gradeNumber stream')
             .populate('academicYear', 'name')
-            .populate('teacher',      'name email')
             .sort({ isMandatory: -1, bucket: 1, name: 1 });
 
         res.status(200).json({ success: true, subjects });
@@ -88,12 +75,6 @@ exports.getSubjects = async (req, res) => {
     }
 };
 
-/**
- * GET /api/subjects/for-grade?gradeNumber=&gradeId=&academicYear=
- * Convenience endpoint: returns ALL subjects (mandatory + bucket) relevant
- * to a student given their grade number (Mode A matches) and/or specific
- * Grade document id (Mode B matches, e.g. for A/L stream students).
- */
 exports.getSubjectsForGrade = async (req, res) => {
     try {
         const { gradeNumber, gradeId, academicYear } = req.query;
@@ -108,7 +89,6 @@ exports.getSubjectsForGrade = async (req, res) => {
         }
 
         const subjects = await Subject.find({ isActive: true, $or: orClauses })
-            .populate('teacher', 'name email')
             .populate('grade', 'name gradeNumber stream')
             .sort({ isMandatory: -1, bucket: 1, name: 1 });
 
@@ -118,7 +98,6 @@ exports.getSubjectsForGrade = async (req, res) => {
     }
 };
 
-// ─── GET /api/subjects/buckets?gradeRange=&grade=&academicYear= ──────────────
 exports.getBucketSubjects = async (req, res) => {
     try {
         const { gradeRange, grade, academicYear } = req.query;
@@ -129,9 +108,7 @@ exports.getBucketSubjects = async (req, res) => {
         if (grade)       orClauses.push({ grade, academicYear: academicYear || null });
         if (orClauses.length > 0) filter.$or = orClauses;
 
-        const subjects = await Subject.find(filter)
-            .populate('teacher', 'name email')
-            .sort({ bucket: 1, name: 1 });
+        const subjects = await Subject.find(filter).sort({ bucket: 1, name: 1 });
 
         const grouped = subjects.reduce((acc, s) => {
             if (!acc[s.bucket]) acc[s.bucket] = [];
@@ -145,14 +122,11 @@ exports.getBucketSubjects = async (req, res) => {
     }
 };
 
-// ─── GET /api/subjects/:id ────────────────────────────────────────────────────
 exports.getSubject = async (req, res) => {
     try {
         const subject = await Subject.findById(req.params.id)
-            .populate('section',      'name')
             .populate('grade',        'name gradeNumber stream')
-            .populate('academicYear', 'name')
-            .populate('teacher',      'name email profilePhoto');
+            .populate('academicYear', 'name');
 
         if (!subject) return res.status(404).json({ success: false, message: 'Subject not found' });
         res.status(200).json({ success: true, subject });
@@ -161,17 +135,14 @@ exports.getSubject = async (req, res) => {
     }
 };
 
-// ─── POST /api/subjects ───────────────────────────────────────────────────────
 exports.createSubject = async (req, res) => {
     try {
         const {
             name, code, scopeMode, gradeRange, grade, academicYear,
             isMandatory, bucket,
-            teacher, credits, description, schedule, semester,
+            credits, description, schedule, semester,
         } = req.body;
 
-        // Validate scope mode explicitly at the API layer (clearer error than
-        // relying solely on the Mongoose pre-validate hook)
         if (scopeMode === 'range') {
             if (!gradeRange) {
                 return res.status(400).json({ success: false, message: 'Grade range is required for range-mode subjects' });
@@ -201,14 +172,13 @@ exports.createSubject = async (req, res) => {
             academicYear: scopeMode === 'specific' ? academicYear : null,
             isMandatory:  isMandatory !== false,
             bucket:       isMandatory ? null : bucket.trim(),
-            teacher, credits, description, schedule,
+            credits, description, schedule,
             semester: semester || 1,
         });
 
         await subject.populate([
             { path: 'grade',        select: 'name gradeNumber stream' },
             { path: 'academicYear', select: 'name' },
-            { path: 'teacher',      select: 'name email' },
         ]);
 
         res.status(201).json({ success: true, subject });
@@ -220,28 +190,25 @@ exports.createSubject = async (req, res) => {
     }
 };
 
-// ─── PUT /api/subjects/:id ────────────────────────────────────────────────────
 exports.updateSubject = async (req, res) => {
     try {
         const subject = await Subject.findById(req.params.id);
         if (!subject) return res.status(404).json({ success: false, message: 'Subject not found' });
 
-        if (req.user.role === 'teacher' && String(subject.teacher) !== String(req.user._id)) {
-            return res.status(403).json({ success: false, message: 'Not authorized' });
+        // Teacher field no longer lives on Subject, so the old teacher-ownership
+        // check is removed — teachers manage their own assignments via
+        // SubjectTeacherAssignment, not by editing the Subject document.
+        if (req.user.role === 'teacher') {
+            return res.status(403).json({ success: false, message: 'Only admins can edit subject definitions' });
         }
 
-        // Don't allow changing scope mode or mandatory/bucket type after creation
-        // (changing scope mode would orphan existing SubjectEnrollment records)
         const { isMandatory, bucket, gradeRange, grade, academicYear, scopeMode, ...safeUpdate } = req.body;
 
         const updated = await Subject.findByIdAndUpdate(
             req.params.id,
             { $set: safeUpdate },
             { new: true, runValidators: true }
-        ).populate([
-            { path: 'grade',   select: 'name gradeNumber stream' },
-            { path: 'teacher', select: 'name email' },
-        ]);
+        ).populate('grade', 'name gradeNumber stream');
 
         res.status(200).json({ success: true, subject: updated });
     } catch (err) {
@@ -249,7 +216,6 @@ exports.updateSubject = async (req, res) => {
     }
 };
 
-// ─── DELETE /api/subjects/:id ─────────────────────────────────────────────────
 exports.deleteSubject = async (req, res) => {
     try {
         const subject = await Subject.findById(req.params.id);
@@ -262,6 +228,10 @@ exports.deleteSubject = async (req, res) => {
                 message: `Cannot delete: ${enrollmentCount} student(s) currently enrolled in this subject`,
             });
         }
+
+        // Clean up any teacher assignments for this subject too
+        const SubjectTeacherAssignment = require('../models/SubjectTeacherAssignment');
+        await SubjectTeacherAssignment.deleteMany({ subject: req.params.id });
 
         await subject.deleteOne();
         res.status(200).json({ success: true, message: 'Subject deleted' });

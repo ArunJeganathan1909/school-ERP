@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import Sidebar from '../../components/Sidebar';
 import NotificationBell from '../../components/NotificationBell';
 import api from '../../api/axios';
+import {
+    fetchAssignmentsBySubject, assignTeacherToSection, removeAssignment,
+    clearAssignmentError,
+} from '../../store/slices/subjectTeacherAssignmentSlice';
 import './ManageSubjects.css';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -18,18 +22,22 @@ const EMPTY_FORM = {
     scopeMode: 'range',        // 'range' | 'specific'
     gradeRange: '', grade: '', academicYear: '',
     isMandatory: true, bucket: '',
-    teacher: '', section: '',
     credits: 3, description: '', semester: 1, schedule: [],
 };
 const EMPTY_SCHEDULE = { day: 'Monday', startTime: '09:00', endTime: '10:30', room: '' };
 
 export default function ManageSubjects() {
+    const dispatch = useDispatch();
     const { user } = useSelector((s) => s.auth);
+    const {
+        bySubject: assignments,
+        loading: assignmentsLoading,
+        error: assignmentError,
+    } = useSelector((s) => s.subjectTeacherAssignments);
 
     const [subjects,  setSubjects]  = useState([]);
     const [years,     setYears]     = useState([]);
     const [grades,    setGrades]    = useState([]);
-    const [sections,  setSections]  = useState([]);
     const [teachers,  setTeachers]  = useState([]);
     const [loading,   setLoading]   = useState(false);
     const [error,     setError]     = useState('');
@@ -51,12 +59,13 @@ export default function ManageSubjects() {
     const [deletingId,  setDeletingId]  = useState(null);
     const [viewSubject, setViewSubject] = useState(null);
 
-    // ── Teacher-per-section assignment modal ────────────────────────────────────
-    const [teacherModalSubject,  setTeacherModalSubject]  = useState(null);
-    const [teacherModalSections, setTeacherModalSections] = useState([]);
-    const [teacherAssignSection, setTeacherAssignSection] = useState('');
-    const [teacherAssignTeacher, setTeacherAssignTeacher] = useState('');
-    const [assigningTeacher,     setAssigningTeacher]     = useState(false);
+    // ── Teacher assignment manager modal ────────────────────────────────────────
+    const [assignmentModalSubject, setAssignmentModalSubject] = useState(null);
+    const [assignmentSections,     setAssignmentSections]     = useState([]); // every section within the subject's scope
+    const [newRowSection,          setNewRowSection]           = useState('');
+    const [newRowTeacher,          setNewRowTeacher]           = useState('');
+    const [savingRow,              setSavingRow]               = useState(false);
+    const [sectionsLoading,        setSectionsLoading]         = useState(false);
 
     useEffect(() => {
         fetchYears();
@@ -66,21 +75,8 @@ export default function ManageSubjects() {
     useEffect(() => { if (filterYear) fetchGrades(filterYear, setGrades); }, [filterYear]);
     useEffect(() => { fetchSubjects(); }, [filterMode, filterRange, filterYear, filterGrade, filterType]);
 
-    // Inside the create/edit form: load grades for the chosen academic year (specific mode only)
+    // Grades for the create/edit form (specific mode only)
     useEffect(() => { if (form.academicYear) fetchGrades(form.academicYear, setGrades); }, [form.academicYear]);
-
-    // Sections for the "assign teacher" section picker inside the form —
-    // depends on whichever grade is implied by the current scope mode
-    const [formSections, setFormSections] = useState([]);
-    useEffect(() => {
-        if (form.scopeMode === 'specific' && form.grade) {
-            fetchSectionsForGrade(form.grade, setFormSections);
-        } else if (form.scopeMode === 'range' && form.gradeRange) {
-            fetchSectionsForRange(form.gradeRange, setFormSections);
-        } else {
-            setFormSections([]);
-        }
-    }, [form.scopeMode, form.grade, form.gradeRange]);
 
     // ── Fetchers ─────────────────────────────────────────────────────────────────
 
@@ -114,19 +110,20 @@ export default function ManageSubjects() {
         catch { setter([]); }
     };
 
-    // Sections belonging to a specific Grade document (A/L mode)
+    // Sections belonging to one specific Grade document (A/L mode)
     const fetchSectionsForGrade = async (gradeId, setter) => {
         try { const { data } = await api.get(`/sections?grade=${gradeId}`); setter(data.sections || []); }
         catch { setter([]); }
     };
 
-    // Sections across ALL grades that fall inside a numeric range (for range-mode teacher assignment) —
-    // fetch every grade across every academic year whose gradeNumber matches the range, then their sections.
+    // Sections across ALL academic years/grades whose gradeNumber falls inside a range
+    // (used for range-mode subjects when picking which sections to assign teachers to)
     const fetchSectionsForRange = async (range, setter) => {
+        setSectionsLoading(true);
         try {
             const [lo, hi] = range.split('-').map(Number);
-            const { data: allYears } = await api.get('/academic-years');
-            const yearIds = allYears.years?.map((y) => y._id) || [];
+            const { data: yearData } = await api.get('/academic-years');
+            const yearIds = (yearData.years || []).map((y) => y._id);
 
             let allSections = [];
             for (const yId of yearIds) {
@@ -141,6 +138,7 @@ export default function ManageSubjects() {
         } catch {
             setter([]);
         }
+        setSectionsLoading(false);
     };
 
     // ── Modal open helpers ───────────────────────────────────────────────────────
@@ -169,8 +167,6 @@ export default function ManageSubjects() {
             academicYear: subject.academicYear?._id || subject.academicYear || '',
             isMandatory:  subject.isMandatory,
             bucket:       subject.bucket || '',
-            teacher:      subject.teacher?._id || subject.teacher || '',
-            section:      subject.section?._id || subject.section || '',
             credits:      subject.credits ?? 3,
             description:  subject.description || '',
             semester:     subject.semester ?? 1,
@@ -223,8 +219,6 @@ export default function ManageSubjects() {
             academicYear: form.scopeMode === 'specific' ? form.academicYear : null,
             isMandatory:  form.isMandatory,
             bucket:       form.isMandatory ? null : form.bucket.trim(),
-            teacher:      form.teacher || null,
-            section:      form.teacher ? (form.section || null) : null,
             credits:      Number(form.credits),
             description:  form.description,
             semester:     Number(form.semester),
@@ -246,7 +240,7 @@ export default function ManageSubjects() {
     };
 
     const handleDelete = async (id, name) => {
-        if (!window.confirm(`Delete subject "${name}"?`)) return;
+        if (!window.confirm(`Delete subject "${name}"? Any teacher assignments for it will also be removed.`)) return;
         setDeletingId(id);
         try {
             await api.delete(`/subjects/${id}`);
@@ -257,36 +251,42 @@ export default function ManageSubjects() {
         setDeletingId(null);
     };
 
-    // ── Teacher-per-section assignment modal ────────────────────────────────────
+    // ── Teacher assignment manager ───────────────────────────────────────────────
 
-    const openTeacherModal = (subject) => {
-        setTeacherModalSubject(subject);
-        setTeacherAssignSection(subject.section?._id || subject.section || '');
-        setTeacherAssignTeacher(subject.teacher?._id || subject.teacher || '');
+    const openAssignmentManager = async (subject) => {
+        setAssignmentModalSubject(subject);
+        setNewRowSection('');
+        setNewRowTeacher('');
+        dispatch(clearAssignmentError());
+        dispatch(fetchAssignmentsBySubject(subject._id));
 
         if (subject.gradeRange) {
-            fetchSectionsForRange(subject.gradeRange, setTeacherModalSections);
+            await fetchSectionsForRange(subject.gradeRange, setAssignmentSections);
         } else if (subject.grade) {
-            fetchSectionsForGrade(subject.grade?._id || subject.grade, setTeacherModalSections);
+            await fetchSectionsForGrade(subject.grade?._id || subject.grade, setAssignmentSections);
         } else {
-            setTeacherModalSections([]);
+            setAssignmentSections([]);
         }
     };
 
-    const handleAssignTeacher = async () => {
-        if (!teacherModalSubject) return;
-        setAssigningTeacher(true);
-        try {
-            await api.put(`/subjects/${teacherModalSubject._id}`, {
-                teacher: teacherAssignTeacher || null,
-                section: teacherAssignTeacher ? (teacherAssignSection || null) : null,
-            });
-            setTeacherModalSubject(null);
-            fetchSubjects();
-        } catch (err) {
-            alert(err.response?.data?.message || 'Failed to assign teacher');
+    const handleAddRow = async () => {
+        if (!newRowSection || !newRowTeacher || !assignmentModalSubject) return;
+        setSavingRow(true);
+        const result = await dispatch(assignTeacherToSection({
+            subjectId: assignmentModalSubject._id,
+            sectionId: newRowSection,
+            teacherId: newRowTeacher,
+        }));
+        setSavingRow(false);
+        if (!result.error) {
+            setNewRowSection('');
+            setNewRowTeacher('');
         }
-        setAssigningTeacher(false);
+    };
+
+    const handleRemoveRow = (assignmentId) => {
+        if (!window.confirm('Remove this teacher assignment?')) return;
+        dispatch(removeAssignment(assignmentId));
     };
 
     // ── Derived data ─────────────────────────────────────────────────────────────
@@ -296,8 +296,7 @@ export default function ManageSubjects() {
         const q = search.toLowerCase();
         return s.name?.toLowerCase().includes(q)
             || s.code?.toLowerCase().includes(q)
-            || s.bucket?.toLowerCase().includes(q)
-            || s.teacher?.name?.toLowerCase().includes(q);
+            || s.bucket?.toLowerCase().includes(q);
     });
 
     const formGrades = form.academicYear
@@ -316,6 +315,9 @@ export default function ManageSubjects() {
         acc[s.bucket].push(s);
         return acc;
     }, {});
+
+    const assignedSectionIds = new Set(assignments.map((a) => a.section?._id));
+    const unassignedSections = assignmentSections.filter((s) => !assignedSectionIds.has(s._id));
 
     return (
         <div className="app-shell">
@@ -382,7 +384,7 @@ export default function ManageSubjects() {
                         <input
                             className="form-input"
                             style={{ flex: 1, minWidth: 200 }}
-                            placeholder="Search by name, code, bucket, teacher…"
+                            placeholder="Search by name, code, bucket…"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
@@ -393,7 +395,6 @@ export default function ManageSubjects() {
                         <div className="subject-stats-strip__item"><span className="subject-stats-strip__val">{subjects.length}</span><span className="subject-stats-strip__label">Total</span></div>
                         <div className="subject-stats-strip__item"><span className="subject-stats-strip__val" style={{ color: '#4F46E5' }}>{mandatorySubjects.length}</span><span className="subject-stats-strip__label">Mandatory</span></div>
                         <div className="subject-stats-strip__item"><span className="subject-stats-strip__val" style={{ color: '#7C3AED' }}>{Object.keys(bucketGroups).length}</span><span className="subject-stats-strip__label">Buckets</span></div>
-                        <div className="subject-stats-strip__item"><span className="subject-stats-strip__val" style={{ color: '#059669' }}>{subjects.filter((s) => s.teacher).length}</span><span className="subject-stats-strip__label">With teacher</span></div>
                     </div>
 
                     {error && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{error}</div>}
@@ -413,7 +414,7 @@ export default function ManageSubjects() {
                             {mandatorySubjects.length > 0 && (
                                 <div style={{ marginBottom: 'var(--space-xl)' }}>
                                     <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, marginBottom: 'var(--space-sm)', color: 'var(--color-text-primary)' }}>📌 Mandatory subjects</h3>
-                                    <SubjectTable subjects={mandatorySubjects} user={user} openEdit={openEdit} openTeacherModal={openTeacherModal} handleDelete={handleDelete} deletingId={deletingId} setViewSubject={setViewSubject} />
+                                    <SubjectTable subjects={mandatorySubjects} user={user} openEdit={openEdit} openAssignmentManager={openAssignmentManager} handleDelete={handleDelete} deletingId={deletingId} setViewSubject={setViewSubject} />
                                 </div>
                             )}
 
@@ -422,7 +423,7 @@ export default function ManageSubjects() {
                                     <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, marginBottom: 'var(--space-sm)', color: 'var(--color-primary)' }}>
                                         🪣 {bucketName} <span style={{ color: 'var(--color-text-muted)', fontWeight: 400, fontSize: '0.8125rem' }}>(choose one)</span>
                                     </h3>
-                                    <SubjectTable subjects={list} user={user} openEdit={openEdit} openTeacherModal={openTeacherModal} handleDelete={handleDelete} deletingId={deletingId} setViewSubject={setViewSubject} />
+                                    <SubjectTable subjects={list} user={user} openEdit={openEdit} openAssignmentManager={openAssignmentManager} handleDelete={handleDelete} deletingId={deletingId} setViewSubject={setViewSubject} />
                                 </div>
                             ))}
                         </>
@@ -560,24 +561,6 @@ export default function ManageSubjects() {
                                 <textarea className="form-input" name="description" value={form.description} onChange={handleChange} rows={2} style={{ resize: 'vertical' }} />
                             </div>
 
-                            {/* Teacher + Section (only needed together) */}
-                            <div className="form-group" style={{ background: '#F9FAFB', borderRadius: 'var(--radius-md)', padding: 'var(--space-md)' }}>
-                                <label className="form-label">Assign teacher (optional — choose section too)</label>
-                                <div className="form-row">
-                                    <select className="form-input" name="teacher" value={form.teacher} onChange={handleChange}>
-                                        <option value="">— No teacher —</option>
-                                        {teachers.map((t) => <option key={t._id} value={t._id}>{t.name} ({t.email})</option>)}
-                                    </select>
-                                    <select className="form-input" name="section" value={form.section} onChange={handleChange} disabled={!form.teacher || formSections.length === 0}>
-                                        <option value="">— Select section —</option>
-                                        {formSections.map((s) => <option key={s._id} value={s._id}>{s.grade?.gradeNumber}{s.name}</option>)}
-                                    </select>
-                                </div>
-                                <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-                                    A subject definition applies to the whole grade range/stream. Teacher assignment is per-section — use the 👨‍🏫 button on the table to set different teachers for different sections of the same subject.
-                                </p>
-                            </div>
-
                             {/* Schedule */}
                             <div className="form-group">
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-sm)' }}>
@@ -597,6 +580,20 @@ export default function ManageSubjects() {
                                 ))}
                             </div>
 
+                            {!editSubject && (
+                                <div style={{
+                                    background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 'var(--radius-md)',
+                                    padding: 'var(--space-md)', fontSize: '0.875rem', color: '#2563EB',
+                                    display: 'flex', gap: 'var(--space-sm)', alignItems: 'flex-start',
+                                }}>
+                                    <span style={{ flexShrink: 0 }}>ℹ</span>
+                                    <span>
+                    Teacher assignment happens after creation. Once saved, use the
+                    "👨‍🏫 Manage teachers" button to assign a different teacher to each section.
+                  </span>
+                                </div>
+                            )}
+
                             <div className="modal__footer">
                                 <button type="button" className="btn btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
                                 <button type="submit" className="btn btn-primary" disabled={saving}>
@@ -608,42 +605,83 @@ export default function ManageSubjects() {
                 </div>
             )}
 
-            {/* ── Teacher-per-section assignment modal ── */}
-            {teacherModalSubject && (
-                <div className="modal-overlay" onClick={() => setTeacherModalSubject(null)}>
-                    <div className="modal" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+            {/* ── Teacher Assignment Manager modal ── */}
+            {assignmentModalSubject && (
+                <div className="modal-overlay" onClick={() => setAssignmentModalSubject(null)}>
+                    <div className="modal" style={{ maxWidth: 600 }} onClick={(e) => e.stopPropagation()}>
                         <div className="modal__header">
-                            <h2 className="modal__title">Assign teacher — {teacherModalSubject.name}</h2>
-                            <button className="btn btn-ghost btn-sm" onClick={() => setTeacherModalSubject(null)}>✕</button>
+                            <h2 className="modal__title">Teachers — {assignmentModalSubject.name}</h2>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setAssignmentModalSubject(null)}>✕</button>
                         </div>
                         <div className="modal__body">
                             <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-md)' }}>
-                                Teacher assignment is scoped to a section — pick which section this teacher covers for this subject.
+                                Assign a different teacher to each section.{' '}
+                                {assignmentModalSubject.gradeRange
+                                    ? `This subject spans grade range ${assignmentModalSubject.gradeRange} — every matching section is listed below.`
+                                    : `This subject is specific to ${assignmentModalSubject.grade?.name || 'one grade'}.`}
                             </p>
-                            <div className="form-group">
-                                <label className="form-label">Teacher</label>
-                                <select className="form-input" value={teacherAssignTeacher} onChange={(e) => setTeacherAssignTeacher(e.target.value)}>
-                                    <option value="">— No teacher —</option>
-                                    {teachers.map((t) => <option key={t._id} value={t._id}>{t.name} ({t.email})</option>)}
+
+                            {assignmentError && <div className="alert alert-error" style={{ marginBottom: 'var(--space-md)' }}>{assignmentError}</div>}
+
+                            {/* Add new row */}
+                            <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-lg)', paddingBottom: 'var(--space-md)', borderBottom: '1px solid var(--color-border)', flexWrap: 'wrap' }}>
+                                <select className="form-input" value={newRowSection} onChange={(e) => setNewRowSection(e.target.value)} style={{ flex: 1, minWidth: 160 }} disabled={sectionsLoading}>
+                                    <option value="">{sectionsLoading ? 'Loading sections…' : 'Select section'}</option>
+                                    {unassignedSections.map((s) => (
+                                        <option key={s._id} value={s._id}>
+                                            {s.grade?.gradeNumber}{s.name}{s.grade?.stream && s.grade.stream !== 'none' ? ` (${s.grade.stream})` : ''}
+                                        </option>
+                                    ))}
                                 </select>
-                            </div>
-                            <div className="form-group">
-                                <label className="form-label">Section</label>
-                                <select className="form-input" value={teacherAssignSection} onChange={(e) => setTeacherAssignSection(e.target.value)} disabled={!teacherAssignTeacher || teacherModalSections.length === 0}>
-                                    <option value="">— Select section —</option>
-                                    {teacherModalSections.map((s) => <option key={s._id} value={s._id}>{s.grade?.gradeNumber}{s.name}</option>)}
+                                <select className="form-input" value={newRowTeacher} onChange={(e) => setNewRowTeacher(e.target.value)} style={{ flex: 1, minWidth: 160 }}>
+                                    <option value="">Select teacher</option>
+                                    {teachers.map((t) => <option key={t._id} value={t._id}>{t.name}</option>)}
                                 </select>
-                                {teacherAssignTeacher && teacherModalSections.length === 0 && (
-                                    <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-                                        No sections found for this subject's grade scope yet.
-                                    </p>
-                                )}
-                            </div>
-                            <div className="modal__footer">
-                                <button className="btn btn-ghost" onClick={() => setTeacherModalSubject(null)}>Cancel</button>
-                                <button className="btn btn-primary" onClick={handleAssignTeacher} disabled={assigningTeacher}>
-                                    {assigningTeacher ? <span className="spinner" /> : 'Save assignment'}
+                                <button className="btn btn-primary btn-sm" onClick={handleAddRow} disabled={!newRowSection || !newRowTeacher || savingRow}>
+                                    {savingRow ? <span className="spinner" /> : '+ Add'}
                                 </button>
+                            </div>
+
+                            {unassignedSections.length === 0 && !sectionsLoading && assignmentSections.length > 0 && (
+                                <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: 'var(--space-md)' }}>
+                                    All sections in this subject's scope already have a teacher assigned.
+                                </p>
+                            )}
+                            {assignmentSections.length === 0 && !sectionsLoading && (
+                                <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: 'var(--space-md)' }}>
+                                    No sections exist yet within this subject's scope. Create sections first.
+                                </p>
+                            )}
+
+                            {/* Existing assignments list */}
+                            {assignmentsLoading ? (
+                                <div className="empty-state" style={{ padding: 'var(--space-xl)' }}>
+                                    <div className="spinner" style={{ width: 28, height: 28, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} />
+                                </div>
+                            ) : assignments.length === 0 ? (
+                                <div className="empty-state" style={{ padding: 'var(--space-xl)' }}>
+                                    <div className="empty-state__icon">👨‍🏫</div>
+                                    <p>No teachers assigned yet.</p>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 320, overflowY: 'auto' }}>
+                                    {assignments.map((a) => (
+                                        <div key={a._id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)', padding: 'var(--space-sm)', borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
+                      <span style={{ fontWeight: 700, color: 'var(--color-primary)', minWidth: 60 }}>
+                        {a.section?.grade?.gradeNumber}{a.section?.name}
+                      </span>
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ fontSize: '0.9375rem', fontWeight: 500 }}>{a.teacher?.name}</div>
+                                                <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>{a.teacher?.email}</div>
+                                            </div>
+                                            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-error)' }} onClick={() => handleRemoveRow(a._id)}>✕</button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="modal__footer">
+                                <button className="btn btn-ghost" onClick={() => setAssignmentModalSubject(null)}>Close</button>
                             </div>
                         </div>
                     </div>
@@ -663,8 +701,6 @@ export default function ManageSubjects() {
                                 { label: 'Code',     val: viewSubject.code },
                                 { label: 'Scope',    val: viewSubject.gradeRange ? `Grade range ${viewSubject.gradeRange} (all years)` : `${viewSubject.grade?.name || '—'} (${viewSubject.grade?.stream || ''})` },
                                 { label: 'Type',     val: viewSubject.isMandatory ? 'Mandatory' : `Bucket: ${viewSubject.bucket}` },
-                                { label: 'Teacher',  val: viewSubject.teacher?.name || 'Unassigned' },
-                                { label: 'Section (for teacher)', val: viewSubject.section?.name || '—' },
                                 { label: 'Semester', val: `Semester ${viewSubject.semester}` },
                                 { label: 'Credits',  val: viewSubject.credits },
                                 { label: 'Description', val: viewSubject.description || '—' },
@@ -676,7 +712,12 @@ export default function ManageSubjects() {
                             ))}
                             <div className="modal__footer">
                                 <button className="btn btn-ghost" onClick={() => setViewSubject(null)}>Close</button>
-                                {user?.role === 'admin' && <button className="btn btn-outline" onClick={() => { setViewSubject(null); openEdit(viewSubject); }}>Edit</button>}
+                                {user?.role === 'admin' && (
+                                    <button className="btn btn-outline" onClick={() => { setViewSubject(null); openAssignmentManager(viewSubject); }}>
+                                        👨‍🏫 Manage teachers
+                                    </button>
+                                )}
+                                {user?.role === 'admin' && <button className="btn btn-primary" onClick={() => { setViewSubject(null); openEdit(viewSubject); }}>Edit</button>}
                             </div>
                         </div>
                     </div>
@@ -686,7 +727,7 @@ export default function ManageSubjects() {
     );
 }
 
-function SubjectTable({ subjects, user, openEdit, openTeacherModal, handleDelete, deletingId, setViewSubject }) {
+function SubjectTable({ subjects, user, openEdit, openAssignmentManager, handleDelete, deletingId, setViewSubject }) {
     return (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             <table className="data-table">
@@ -695,7 +736,6 @@ function SubjectTable({ subjects, user, openEdit, openTeacherModal, handleDelete
                     <th>Code</th>
                     <th>Name</th>
                     <th>Scope</th>
-                    <th>Teacher (Section)</th>
                     <th>Semester</th>
                     <th>Credits</th>
                     {user?.role === 'admin' && <th>Actions</th>}
@@ -712,12 +752,6 @@ function SubjectTable({ subjects, user, openEdit, openTeacherModal, handleDelete
                                 : <span>{s.grade?.name}{s.grade?.stream ? ` (${s.grade.stream})` : ''}</span>
                             }
                         </td>
-                        <td style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
-                            {s.teacher?.name
-                                ? <>{s.teacher.name} {s.section?.name && <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>({s.section.name})</span>}</>
-                                : <span style={{ color: 'var(--color-text-muted)' }}>Unassigned</span>
-                            }
-                        </td>
                         <td style={{ color: 'var(--color-text-secondary)' }}>S{s.semester}</td>
                         <td style={{ color: 'var(--color-text-secondary)' }}>{s.credits}</td>
                         {user?.role === 'admin' && (
@@ -725,7 +759,7 @@ function SubjectTable({ subjects, user, openEdit, openTeacherModal, handleDelete
                                 <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
                                     <button className="btn btn-ghost btn-sm" onClick={() => setViewSubject(s)} title="View">👁</button>
                                     <button className="btn btn-outline btn-sm" onClick={() => openEdit(s)}>Edit</button>
-                                    <button className="btn btn-outline btn-sm" onClick={() => openTeacherModal(s)}>👨‍🏫</button>
+                                    <button className="btn btn-outline btn-sm" onClick={() => openAssignmentManager(s)}>👨‍🏫 Teachers</button>
                                     <button className="btn btn-danger btn-sm" onClick={() => handleDelete(s._id, s.name)} disabled={deletingId === s._id}>{deletingId === s._id ? '…' : 'Del'}</button>
                                 </div>
                             </td>

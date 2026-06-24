@@ -57,6 +57,8 @@ app.use('/api/announcements',      require('./routes/announcementRoutes'));
 app.use('/api/reports',            require('./routes/reportRoutes'));
 app.use('/api/timetables',         require('./routes/timetableRoutes'));
 
+app.use('/api/subject-teacher-assignments', require('./routes/subjectTeacherAssignmentRoutes'));
+
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.json({ message: 'School ERP API running' }));
 

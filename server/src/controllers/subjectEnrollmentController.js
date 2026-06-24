@@ -161,19 +161,30 @@ exports.getStudentSubjects = async (req, res) => {
         if (academicYear) filter.academicYear = academicYear;
         if (semester)     filter.semester     = Number(semester);
 
+        const SubjectTeacherAssignment = require('../models/SubjectTeacherAssignment');
+
         const enrollments = await SubjectEnrollment.find(filter)
-            .populate({
-                path:   'subject',
-                select: 'name code bucket isMandatory credits semester schedule',
-                populate: { path: 'teacher', select: 'name email profilePhoto' },
-            })
+            .populate('subject', 'name code bucket isMandatory credits semester schedule')
             .populate('section', 'name')
-            .sort({ enrollmentType: 1, bucket: 1 });
+            .sort({ enrollmentType: 1, bucket: 1 })
+            .lean();
 
-        const mandatory = enrollments.filter(e => e.enrollmentType === 'mandatory');
-        const buckets   = enrollments.filter(e => e.enrollmentType === 'bucket');
+        // Attach the right teacher per enrollment via SubjectTeacherAssignment
+        // (subject+section pair → teacher)
+        const withTeachers = await Promise.all(
+            enrollments.map(async (e) => {
+                const assignment = await SubjectTeacherAssignment.findOne({
+                    subject: e.subject._id,
+                    section: e.section._id,
+                }).populate('teacher', 'name email profilePhoto');
+                return { ...e, subject: { ...e.subject, teacher: assignment?.teacher || null } };
+            })
+        );
 
-        res.status(200).json({ success: true, enrollments, mandatory, buckets });
+        const mandatory = withTeachers.filter(e => e.enrollmentType === 'mandatory');
+        const buckets   = withTeachers.filter(e => e.enrollmentType === 'bucket');
+
+        res.status(200).json({ success: true, enrollments: withTeachers, mandatory, buckets });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -187,19 +198,30 @@ exports.getMySubjects = async (req, res) => {
         if (academicYear) filter.academicYear = academicYear;
         if (semester)     filter.semester     = Number(semester);
 
+        const SubjectTeacherAssignment = require('../models/SubjectTeacherAssignment');
+
         const enrollments = await SubjectEnrollment.find(filter)
-            .populate({
-                path:   'subject',
-                select: 'name code bucket isMandatory credits semester description schedule',
-                populate: { path: 'teacher', select: 'name email profilePhoto' },
-            })
+            .populate('subject', 'name code bucket isMandatory credits semester description schedule')
             .populate('section', 'name room')
-            .sort({ enrollmentType: 1, 'subject.name': 1 });
+            .sort({ enrollmentType: 1, 'subject.name': 1 })
+            .lean();
 
-        const mandatory = enrollments.filter(e => e.enrollmentType === 'mandatory');
-        const buckets   = enrollments.filter(e => e.enrollmentType === 'bucket');
+        // Attach the right teacher per enrollment via SubjectTeacherAssignment
+        // (subject+section pair → teacher)
+        const withTeachers = await Promise.all(
+            enrollments.map(async (e) => {
+                const assignment = await SubjectTeacherAssignment.findOne({
+                    subject: e.subject._id,
+                    section: e.section._id,
+                }).populate('teacher', 'name email profilePhoto');
+                return { ...e, subject: { ...e.subject, teacher: assignment?.teacher || null } };
+            })
+        );
 
-        res.status(200).json({ success: true, enrollments, mandatory, buckets });
+        const mandatory = withTeachers.filter(e => e.enrollmentType === 'mandatory');
+        const buckets   = withTeachers.filter(e => e.enrollmentType === 'bucket');
+
+        res.status(200).json({ success: true, enrollments: withTeachers, mandatory, buckets });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }

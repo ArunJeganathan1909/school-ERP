@@ -15,6 +15,7 @@ import sectionReducer             from './slices/sectionSlice';
 import studentSectionReducer      from './slices/studentSectionSlice';
 import subjectReducer             from './slices/subjectSlice';
 import subjectEnrollmentReducer   from './slices/subjectEnrollmentSlice';
+import subjectTeacherAssignmentReducer from './slices/subjectTeacherAssignmentSlice';
 
 export const store = configureStore({
     reducer: {
@@ -34,5 +35,6 @@ export const store = configureStore({
         studentSections:    studentSectionReducer,
         subjects:           subjectReducer,
         subjectEnrollments: subjectEnrollmentReducer,
+        subjectTeacherAssignments: subjectTeacherAssignmentReducer,
     },
 });
