@@ -53,6 +53,9 @@ import TimetableViewer from './pages/shared/TimetableViewer';
 // Student pages
 import MySubjects from './pages/student/MySubjects';
 
+// Teacher pages
+import TeacherSubjects from './pages/teacher/TeacherSubjects';
+
 export default function App() {
   const dispatch = useDispatch();
 
@@ -109,12 +112,15 @@ export default function App() {
           <Route path="/admin/academic-years"        element={<RoleRoute roles={['admin']}><ManageAcademicYears /></RoleRoute>} />
           <Route path="/admin/grades"                element={<RoleRoute roles={['admin']}><ManageGrades /></RoleRoute>} />
           <Route path="/admin/sections"              element={<RoleRoute roles={['admin']}><ManageSections /></RoleRoute>} />
-          <Route path="/admin/subjects"              element={<RoleRoute roles={['admin','teacher']}><ManageSubjects /></RoleRoute>} />
+          <Route path="/admin/subjects"              element={<RoleRoute roles={['admin']}><ManageSubjects /></RoleRoute>} />
           <Route path="/admin/subject-enrollments"   element={<RoleRoute roles={['admin']}><SubjectEnrollmentManager /></RoleRoute>} />
           <Route path="/admin/users"                 element={<RoleRoute roles={['admin']}><ManageUsers /></RoleRoute>} />
 
           {/* Student */}
           <Route path="/student/subjects" element={<RoleRoute roles={['student']}><MySubjects /></RoleRoute>} />
+
+          {/* Teacher */}
+          <Route path="/teacher/subjects" element={<RoleRoute roles={['teacher']}><TeacherSubjects /></RoleRoute>} />
 
           {/* Unauthorized */}
           <Route path="/unauthorized" element={

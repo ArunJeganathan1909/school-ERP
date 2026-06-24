@@ -5,7 +5,7 @@ import { logout } from '../store/slices/authSlice';
 const NAV_ITEMS = {
     student: [
         { label: 'Dashboard',        icon: '⊞', path: '/student/dashboard' },
-        { label: 'My Subjects',      icon: '📚', path: '/student/subjects' },   // was "My courses"
+        { label: 'My Subjects',      icon: '📚', path: '/student/subjects' },
         { label: 'Lessons',          icon: '📖', path: '/lessons' },
         { label: 'Assignments',      icon: '📝', path: '/assignments' },
         { label: 'Attendance',       icon: '✅', path: '/student/attendance' },
@@ -16,7 +16,7 @@ const NAV_ITEMS = {
     ],
     teacher: [
         { label: 'Dashboard',        icon: '⊞', path: '/teacher/dashboard' },
-        { label: 'Subjects',         icon: '📖', path: '/admin/subjects' },
+        { label: 'My Subjects',      icon: '📖', path: '/teacher/subjects' },   // ← fixed: was '/admin/subjects'
         { label: 'Lessons',          icon: '📄', path: '/teacher/lessons' },
         { label: 'Assignments',      icon: '📝', path: '/teacher/assignments' },
         { label: 'Attendance',       icon: '✅', path: '/teacher/attendance' },
@@ -30,7 +30,6 @@ const NAV_ITEMS = {
         { label: 'Grades',           icon: '🎓', path: '/admin/grades' },
         { label: 'Sections',         icon: '🏫', path: '/admin/sections' },
         { label: 'Users',            icon: '👥', path: '/admin/users' },
-        // ── Courses removed ──────────────────────────────────────────────────
         { label: 'Subjects',         icon: '📖', path: '/admin/subjects' },
         { label: 'Subject Enrollment', icon: '📋', path: '/admin/subject-enrollments' },
         { label: 'Timetables',       icon: '🗓', path: '/admin/timetables' },
