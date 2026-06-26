@@ -34,10 +34,10 @@ export default function LessonViewer() {
     }, [dispatch, id]);
 
     useEffect(() => {
-        if (lesson?.course?._id) {
-            dispatch(fetchLessons({ course: lesson.course._id }));
+        if (lesson?.subject?._id) {
+            dispatch(fetchLessons({ subject: lesson.subject._id }));
         }
-    }, [dispatch, lesson?.course?._id]);
+    }, [dispatch, lesson?.subject?._id]);
 
     const typeIcon = { text: '📄', video: '🎬', pdf: '📑', link: '🔗', slide: '📊' };
 
