@@ -9,6 +9,7 @@ import {
     assignStudentToSection, transferStudent, withdrawStudent,
     clearStudentSectionError, clearLastResult,
 } from '../../store/slices/studentSectionSlice';
+import { syncStudentEnrollments, clearSyncMessage } from '../../store/slices/subjectEnrollmentSlice';
 import api from '../../api/axios';
 import './ManageSections.css';
 
@@ -20,6 +21,7 @@ export default function ManageSections() {
     const { list: grades }   = useSelector((s) => s.grades);
     const { list: sections, loading, error } = useSelector((s) => s.sections);
     const { lastResult } = useSelector((s) => s.studentSections);
+    const { lastSyncMessage, syncing } = useSelector((s) => s.subjectEnrollments);
 
     const [filterYear,  setFilterYear]  = useState('');
     const [filterGrade, setFilterGrade] = useState('');
@@ -39,6 +41,7 @@ export default function ManageSections() {
     const [assigning,       setAssigning]       = useState(false);
     const [allStudents,     setAllStudents]     = useState([]);
     const [transferTarget,  setTransferTarget]  = useState(null); // student record being transferred
+    const [syncingId,       setSyncingId]       = useState(null); // which student row is currently syncing
 
     useEffect(() => {
         dispatch(fetchAcademicYears());
@@ -135,6 +138,20 @@ export default function ManageSections() {
         loadSectionStudents(selectedSection._id);
     };
 
+    // Retroactively sync mandatory subjects for one student — needed when a
+    // student was assigned to a section BEFORE matching subjects were created.
+    const handleSync = async (studentId) => {
+        setSyncingId(studentId);
+        dispatch(clearSyncMessage());
+        const result = await dispatch(syncStudentEnrollments(studentId));
+        setSyncingId(null);
+        if (!result.error) {
+            alert(result.payload.message);
+        } else {
+            alert(result.payload || 'Sync failed');
+        }
+    };
+
     const filteredGrades   = filterYear ? grades.filter((g) => (g.academicYear?._id || g.academicYear) === filterYear) : grades;
     const assignedIds      = new Set(sectionStudents.map((r) => r.student?._id));
     const unassigned        = allStudents.filter((s) => !assignedIds.has(s._id));
@@ -171,6 +188,7 @@ export default function ManageSections() {
                     {!filterYear && <div className="alert alert-info">Select an academic year to view and manage sections.</div>}
                     {error && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{error}</div>}
                     {lastResult?.message && <div className="alert alert-success" style={{ marginBottom: 'var(--space-lg)' }}>{lastResult.message}</div>}
+                    {lastSyncMessage && <div className="alert alert-success" style={{ marginBottom: 'var(--space-lg)' }}>{lastSyncMessage}</div>}
 
                     {filterYear && (
                         <div className="sections-layout">
@@ -248,6 +266,14 @@ export default function ManageSections() {
                                                         <div className="student-panel__email">{record.student?.email}</div>
                                                     </div>
                                                     <div className="student-panel__roll">{record.rollNumber || <span style={{ color: 'var(--color-text-muted)' }}>No roll no.</span>}</div>
+                                                    <button
+                                                        className="btn btn-ghost btn-sm"
+                                                        onClick={() => handleSync(record.student._id)}
+                                                        disabled={syncingId === record.student._id}
+                                                        title="Sync mandatory subjects (use if subjects were created after this student was assigned)"
+                                                    >
+                                                        {syncingId === record.student._id ? <span className="spinner" /> : '🔄'}
+                                                    </button>
                                                     <button className="btn btn-ghost btn-sm" onClick={() => setTransferTarget(record)} title="Transfer to another section">⇄</button>
                                                     <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-error)', flexShrink: 0 }} onClick={() => handleWithdraw(record._id)} title="Withdraw from section">✕</button>
                                                 </div>

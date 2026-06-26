@@ -373,3 +373,85 @@ exports.getAll = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
+
+// ─── POST /api/subject-enrollments/sync/:studentId ───────────────────────────
+// Retroactively enrolls a student into any mandatory subjects matching their
+// CURRENT section/grade that were created or now match AFTER the student was
+// originally assigned (autoEnrollMandatory only runs once, at assignment time).
+exports.syncMandatoryEnrollments = async (req, res) => {
+    try {
+        const StudentSection = require('../models/StudentSection');
+
+        const studentSection = await StudentSection.findOne({
+            student: req.params.studentId,
+            status:  'active',
+        }).populate('grade', 'gradeNumber');
+
+        if (!studentSection) {
+            return res.status(404).json({
+                success: false,
+                message: 'Student has no active section assignment',
+            });
+        }
+
+        const { enrolled, skipped } = await exports.autoEnrollMandatory({
+            studentId:      req.params.studentId,
+            sectionId:      studentSection.section,
+            gradeId:        studentSection.grade._id,
+            gradeNumber:    studentSection.grade?.gradeNumber,
+            academicYearId: studentSection.academicYear,
+            semester:       1,
+        });
+
+        res.status(200).json({
+            success: true,
+            message: enrolled > 0
+                ? `Synced ${enrolled} new mandatory subject(s).`
+                : 'No new mandatory subjects to sync — already up to date.',
+            enrolled,
+            skipped,
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+// ─── POST /api/subject-enrollments/sync-all ───────────────────────────────────
+// Bulk version — syncs every active student in every active section.
+// Useful right after creating a new mandatory subject so it retroactively
+// reaches everyone already assigned.
+exports.syncAllMandatoryEnrollments = async (req, res) => {
+    try {
+        const StudentSection = require('../models/StudentSection');
+
+        const activeAssignments = await StudentSection.find({ status: 'active' })
+            .populate('grade', 'gradeNumber');
+
+        let totalEnrolled = 0;
+        let studentsAffected = 0;
+
+        for (const sa of activeAssignments) {
+            const { enrolled } = await exports.autoEnrollMandatory({
+                studentId:      sa.student,
+                sectionId:      sa.section,
+                gradeId:        sa.grade._id,
+                gradeNumber:    sa.grade?.gradeNumber,
+                academicYearId: sa.academicYear,
+                semester:       1,
+            });
+            if (enrolled > 0) {
+                totalEnrolled += enrolled;
+                studentsAffected++;
+            }
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Synced ${totalEnrolled} new enrollment(s) across ${studentsAffected} student(s).`,
+            totalEnrolled,
+            studentsAffected,
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};

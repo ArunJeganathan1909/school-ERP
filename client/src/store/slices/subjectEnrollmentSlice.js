@@ -88,6 +88,28 @@ export const enterMarks = createAsyncThunk('subjectEnrollments/enterMarks', asyn
     } catch (err) { return rejectWithValue(err.response?.data?.message); }
 });
 
+// ── Admin: retroactively sync ONE student's mandatory enrollments ────────────
+// Useful when a student was assigned to a section BEFORE matching mandatory
+// subjects existed — autoEnrollMandatory only fires once, at assignment time.
+
+// POST /api/subject-enrollments/sync/:studentId
+export const syncStudentEnrollments = createAsyncThunk('subjectEnrollments/sync', async (studentId, { rejectWithValue }) => {
+    try {
+        const { data } = await api.post(`/subject-enrollments/sync/${studentId}`);
+        return data; // { message, enrolled, skipped }
+    } catch (err) { return rejectWithValue(err.response?.data?.message); }
+});
+
+// ── Admin: retroactively sync ALL active students in ALL active sections ────
+
+// POST /api/subject-enrollments/sync-all
+export const syncAllEnrollments = createAsyncThunk('subjectEnrollments/syncAll', async (_, { rejectWithValue }) => {
+    try {
+        const { data } = await api.post('/subject-enrollments/sync-all');
+        return data; // { message, totalEnrolled, studentsAffected }
+    } catch (err) { return rejectWithValue(err.response?.data?.message); }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 const subjectEnrollmentSlice = createSlice({
@@ -114,6 +136,10 @@ const subjectEnrollmentSlice = createSlice({
         pendingBuckets: [],
         pendingTotal:   0,
 
+        // Admin: retroactive sync result message
+        lastSyncMessage: null,
+        syncing:         false,
+
         loading: false,
         error:   null,
     },
@@ -124,6 +150,7 @@ const subjectEnrollmentSlice = createSlice({
             s.studentMandatory   = [];
             s.studentBuckets     = [];
         },
+        clearSyncMessage(s) { s.lastSyncMessage = null; },
     },
     extraReducers: (builder) => {
         builder
@@ -202,9 +229,19 @@ const subjectEnrollmentSlice = createSlice({
                 const j = s.subjectStudents.findIndex(e => e._id === a.payload._id);
                 if (j !== -1) s.subjectStudents[j] = a.payload;
             })
-            .addCase(enterMarks.rejected,  (s, a) => { s.error = a.payload; });
+            .addCase(enterMarks.rejected,  (s, a) => { s.error = a.payload; })
+
+            // syncStudentEnrollments
+            .addCase(syncStudentEnrollments.pending,   (s) => { s.syncing = true; s.error = null; })
+            .addCase(syncStudentEnrollments.fulfilled, (s, a) => { s.syncing = false; s.lastSyncMessage = a.payload.message; })
+            .addCase(syncStudentEnrollments.rejected,  (s, a) => { s.syncing = false; s.error = a.payload; })
+
+            // syncAllEnrollments
+            .addCase(syncAllEnrollments.pending,   (s) => { s.syncing = true; s.error = null; })
+            .addCase(syncAllEnrollments.fulfilled, (s, a) => { s.syncing = false; s.lastSyncMessage = a.payload.message; })
+            .addCase(syncAllEnrollments.rejected,  (s, a) => { s.syncing = false; s.error = a.payload; });
     },
 });
 
-export const { clearSubjectEnrollmentError, clearStudentEnrollments } = subjectEnrollmentSlice.actions;
+export const { clearSubjectEnrollmentError, clearStudentEnrollments, clearSyncMessage } = subjectEnrollmentSlice.actions;
 export default subjectEnrollmentSlice.reducer;

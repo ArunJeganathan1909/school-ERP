@@ -26,4 +26,7 @@ router.get('/student/:studentId', protect, authorize('admin', 'teacher'), c.getS
 // ── Teacher/Admin: enter marks ───────────────────────────────────────────────
 router.put('/:id/marks', protect, authorize('admin', 'teacher'), c.enterMarks);
 
+router.post('/sync/:studentId', protect, authorize('admin'), c.syncMandatoryEnrollments);
+router.post('/sync-all',        protect, authorize('admin'), c.syncAllMandatoryEnrollments);
+
 module.exports = router;

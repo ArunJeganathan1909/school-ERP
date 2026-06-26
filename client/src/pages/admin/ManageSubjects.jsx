@@ -7,6 +7,7 @@ import {
     fetchAssignmentsBySubject, assignTeacherToSection, removeAssignment,
     clearAssignmentError,
 } from '../../store/slices/subjectTeacherAssignmentSlice';
+import { syncAllEnrollments, clearSyncMessage } from '../../store/slices/subjectEnrollmentSlice';
 import './ManageSubjects.css';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -34,6 +35,7 @@ export default function ManageSubjects() {
         loading: assignmentsLoading,
         error: assignmentError,
     } = useSelector((s) => s.subjectTeacherAssignments);
+    const { lastSyncMessage, syncing } = useSelector((s) => s.subjectEnrollments);
 
     const [subjects,  setSubjects]  = useState([]);
     const [years,     setYears]     = useState([]);
@@ -251,6 +253,21 @@ export default function ManageSubjects() {
         setDeletingId(null);
     };
 
+    // ── Retroactive sync (bulk) ──────────────────────────────────────────────────
+    // After creating a new mandatory subject, students already assigned to a
+    // matching section/grade won't have it auto-enrolled (autoEnrollMandatory
+    // only fires once, at assignment time). This pushes it out to everyone.
+    const handleSyncAll = async () => {
+        if (!window.confirm('Sync mandatory subjects for every student already assigned to a section? This may take a moment for large schools.')) return;
+        dispatch(clearSyncMessage());
+        const result = await dispatch(syncAllEnrollments());
+        if (!result.error) {
+            alert(result.payload.message);
+        } else {
+            alert(result.payload || 'Sync failed');
+        }
+    };
+
     // ── Teacher assignment manager ───────────────────────────────────────────────
 
     const openAssignmentManager = async (subject) => {
@@ -327,11 +344,18 @@ export default function ManageSubjects() {
                     <h1 className="topbar__title">Subject management</h1>
                     <div className="topbar__right">
                         <NotificationBell />
+                        {user?.role === 'admin' && (
+                            <button className="btn btn-outline" onClick={handleSyncAll} disabled={syncing} title="Retroactively enroll students already assigned to sections into any matching mandatory subjects">
+                                {syncing ? <span className="spinner" /> : '🔄 Sync all students'}
+                            </button>
+                        )}
                         {user?.role === 'admin' && <button className="btn btn-primary" onClick={openCreate}>+ Add subject</button>}
                     </div>
                 </div>
 
                 <div className="page-body">
+
+                    {lastSyncMessage && <div className="alert alert-success" style={{ marginBottom: 'var(--space-lg)' }}>{lastSyncMessage}</div>}
 
                     {/* ── Filter mode toggle ── */}
                     <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-md)' }}>
@@ -590,6 +614,8 @@ export default function ManageSubjects() {
                                     <span>
                     Teacher assignment happens after creation. Once saved, use the
                     "👨‍🏫 Manage teachers" button to assign a different teacher to each section.
+                    If students were already assigned to matching sections, click
+                    "🔄 Sync all students" on the toolbar afterwards to enroll them retroactively.
                   </span>
                                 </div>
                             )}
