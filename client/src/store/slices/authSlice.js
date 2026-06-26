@@ -37,12 +37,16 @@ const authSlice =  createSlice({
         user: null,
         token: localStorage.getItem("token") || null,
         loading: false,
+        // If there's no token, there's nothing to verify — we're "done" already.
+        // If there IS a token, we're not initialized until fetchMe() settles.
+        initialized: !localStorage.getItem("token"),
         error: null,
     },
     reducers: {
         logout(state) {
             state.user = null;
             state.token = null;
+            state.initialized = true;
             localStorage.removeItem("token");
         },
         clearError(state) {
@@ -63,6 +67,7 @@ const authSlice =  createSlice({
             .addCase(loginUser.pending, handlePending)
             .addCase(loginUser.fulfilled, (state, action) => {
                 state.loading = false;
+                state.initialized = true;
                 state.user = action.payload.user;
                 state.token = action.payload.token;
             })
@@ -71,13 +76,28 @@ const authSlice =  createSlice({
             .addCase(registerUser.pending, handlePending)
             .addCase(registerUser.fulfilled, (state, action) => {
                 state.loading = false;
+                state.initialized = true;
                 state.user = action.payload.user;
                 state.token = action.payload.token;
             })
             .addCase(registerUser.rejected, handleRejected)
 
+            .addCase(fetchMe.pending, (state) => {
+                state.loading = true;
+            })
             .addCase(fetchMe.fulfilled, (state, action) => {
+                state.loading = false;
+                state.initialized = true;
                 state.user = action.payload.user;
+            })
+            .addCase(fetchMe.rejected, (state) => {
+                // Token is invalid/expired — clear it so the user isn't stuck
+                // in a state where token exists but user can never load.
+                state.loading = false;
+                state.initialized = true;
+                state.user = null;
+                state.token = null;
+                localStorage.removeItem("token");
             });
     },
 });
