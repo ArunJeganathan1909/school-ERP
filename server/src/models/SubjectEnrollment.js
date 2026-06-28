@@ -97,10 +97,15 @@ const subjectEnrollmentSchema = new mongoose.Schema(
 subjectEnrollmentSchema.index({ student: 1, subject: 1, academicYear: 1 }, { unique: true });
 
 // One bucket selection per student per bucket per academic year
-// (bucket is a free-form string; sparse so null buckets are excluded)
+// (bucket is a free-form string; partialFilterExpression excludes mandatory
+//  enrollments where bucket is explicitly null — sparse alone does NOT do this,
+//  since sparse only skips documents missing the field, not ones with bucket: null)
 subjectEnrollmentSchema.index(
     { student: 1, bucket: 1, academicYear: 1 },
-    { unique: true, sparse: true }
+    {
+        unique: true,
+        partialFilterExpression: { bucket: { $type: 'string' } },
+    }
 );
 
 subjectEnrollmentSchema.index({ section: 1, academicYear: 1, status: 1 });

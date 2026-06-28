@@ -6,8 +6,8 @@ import { fetchAcademicYears } from '../../store/slices/academicYearSlice';
 import { fetchGrades } from '../../store/slices/gradeSlice';
 import { fetchSections } from '../../store/slices/sectionSlice';
 import {
-    fetchPendingBuckets, assignBucketSubject, changeBucketSubject,
-    fetchStudentSubjects, clearSubjectEnrollmentError,
+    fetchStudentSubjects, assignBucketSubject, changeBucketSubject,
+    clearSubjectEnrollmentError, clearStudentEnrollments,
 } from '../../store/slices/subjectEnrollmentSlice';
 import api from '../../api/axios';
 import './SubjectEnrollmentManager.css';
@@ -18,230 +18,310 @@ export default function SubjectEnrollmentManager() {
     const { list: grades }   = useSelector((s) => s.grades);
     const { list: sections } = useSelector((s) => s.sections);
     const {
-        pendingBuckets, pendingTotal, loading, error,
-        studentEnrollments, studentMandatory, studentBuckets,
+        studentMandatory, studentBuckets, loading: enrollLoading, error,
     } = useSelector((s) => s.subjectEnrollments);
 
-    const [filterYear,    setFilterYear]    = useState('');
-    const [filterGrade,   setFilterGrade]   = useState('');
+    // ── Step 1: Grade selection ──
+    const [filterYear,  setFilterYear]  = useState('');
+    const [filterGrade, setFilterGrade] = useState('');
+
+    // ── Step 2: Section selection ──
     const [filterSection, setFilterSection] = useState('');
-    const [activeTab,     setActiveTab]     = useState('pending'); // 'pending' | 'student'
 
-    const [searchStudent,   setSearchStudent]   = useState('');
-    const [allStudents,     setAllStudents]     = useState([]);
-    const [selectedStudent,  setSelectedStudent] = useState(null);
-    const [bucketOptions,    setBucketOptions]   = useState({}); // { bucketName: [subjects] }
-    const [assignError,      setAssignError]     = useState('');
-    const [assigningBucket,  setAssigningBucket] = useState('');
+    // ── Step 3: Student list for the section ──
+    const [sectionStudents, setSectionStudents] = useState([]);
+    const [studentsLoading, setStudentsLoading] = useState(false);
 
-    useEffect(() => { dispatch(fetchAcademicYears()); api.get('/users?role=student&limit=500').then(({ data }) => setAllStudents(data.users || [])); }, [dispatch]);
+    // ── Step 4: Selected student + their bucket options ──
+    const [selectedStudent, setSelectedStudent] = useState(null);
+    const [bucketGrouped,   setBucketGrouped]   = useState({}); // { bucketName: [subjects] }
+    const [bucketsLoading,  setBucketsLoading]  = useState(false);
+    const [assigningBucket, setAssigningBucket] = useState(''); // which bucket name is currently saving
+
+    useEffect(() => { dispatch(fetchAcademicYears()); }, [dispatch]);
     useEffect(() => { if (filterYear) dispatch(fetchGrades({ academicYear: filterYear })); }, [dispatch, filterYear]);
-    useEffect(() => { if (filterGrade) dispatch(fetchSections({ grade: filterGrade, academicYear: filterYear })); }, [dispatch, filterGrade, filterYear]);
-
     useEffect(() => {
-        if (filterSection && filterYear) {
-            dispatch(fetchPendingBuckets({ sectionId: filterSection, academicYearId: filterYear }));
-        }
-    }, [dispatch, filterSection, filterYear]);
+        if (filterGrade && filterYear) dispatch(fetchSections({ grade: filterGrade, academicYear: filterYear }));
+    }, [dispatch, filterGrade, filterYear]);
 
-    const openStudentTab = async (studentId) => {
-        setSelectedStudent(allStudents.find((s) => s._id === studentId));
-        setActiveTab('student');
-        dispatch(clearSubjectEnrollmentError());
-        await dispatch(fetchStudentSubjects({ studentId, academicYear: filterYear }));
+    // Load students whenever a section is picked
+    useEffect(() => {
+        if (!filterSection) { setSectionStudents([]); return; }
+        loadSectionStudents(filterSection);
+    }, [filterSection]);
 
-        // Load available bucket options for this student's grade/section
+    // Load bucket options whenever the section's grade is known (re-used for every student in that section)
+    useEffect(() => {
         const section = sections.find((s) => s._id === filterSection);
-        if (section) {
-            try {
-                const { data } = await api.get(`/subjects/buckets?grade=${section.grade?._id || section.grade}&academicYear=${filterYear}`);
-                setBucketOptions(data.grouped || {});
-            } catch { setBucketOptions({}); }
+        if (!section) { setBucketGrouped({}); return; }
+        loadBucketOptions(section);
+    }, [filterSection, sections]);
+
+    const loadSectionStudents = async (sectionId) => {
+        setStudentsLoading(true);
+        try {
+            const { data } = await api.get(`/sections/${sectionId}/students`);
+            setSectionStudents(data.students || []);
+        } catch {
+            setSectionStudents([]);
+        }
+        setStudentsLoading(false);
+    };
+
+    // Fetches only the bucket subjects relevant to this section's grade range
+    // (or specific grade, for A/L) — uses the existing /subjects/buckets endpoint
+    // which groups results by bucket name server-side.
+    const loadBucketOptions = async (section) => {
+        setBucketsLoading(true);
+        try {
+            const params = new URLSearchParams();
+            const gradeNumber = section.grade?.gradeNumber;
+
+            // Resolve the grade range client-side (mirrors gradeRangeFor on backend)
+            let range = null;
+            if (gradeNumber >= 1  && gradeNumber <= 5)  range = '1-5';
+            if (gradeNumber >= 6  && gradeNumber <= 9)  range = '6-9';
+            if (gradeNumber >= 10 && gradeNumber <= 11) range = '10-11';
+            if (gradeNumber >= 12 && gradeNumber <= 13) range = '12-13';
+
+            if (range) params.append('gradeRange', range);
+
+            // A/L sections also need the specific grade+year match (Mode B subjects)
+            if (gradeNumber >= 12) {
+                params.append('grade', section.grade._id);
+                params.append('academicYear', section.academicYear?._id || filterYear);
+            }
+
+            const { data } = await api.get(`/subjects/buckets?${params}`);
+            setBucketGrouped(data.grouped || {});
+        } catch {
+            setBucketGrouped({});
+        }
+        setBucketsLoading(false);
+    };
+
+    const openStudent = (student) => {
+        setSelectedStudent(student);
+        dispatch(clearSubjectEnrollmentError());
+        dispatch(fetchStudentSubjects({ studentId: student._id, academicYear: filterYear }));
+    };
+
+    const closeStudent = () => {
+        setSelectedStudent(null);
+        dispatch(clearStudentEnrollments());
+    };
+
+    const currentChoiceFor = (bucketName) =>
+        studentBuckets.find((e) => e.bucket === bucketName);
+
+    const handlePick = async (bucketName, subjectId) => {
+        if (!selectedStudent) return;
+        setAssigningBucket(bucketName);
+
+        const existing = currentChoiceFor(bucketName);
+        const result = existing
+            ? await dispatch(changeBucketSubject({ studentId: selectedStudent._id, newSubjectId: subjectId, academicYearId: filterYear }))
+            : await dispatch(assignBucketSubject({ studentId: selectedStudent._id, subjectId, academicYearId: filterYear }));
+
+        setAssigningBucket('');
+        if (!result.error) {
+            // Refresh this student's view so the "current pick" badge updates
+            dispatch(fetchStudentSubjects({ studentId: selectedStudent._id, academicYear: filterYear }));
         }
     };
 
-    const handleAssignBucket = async (subjectId, bucketName) => {
-        if (!selectedStudent) return;
-        setAssignError('');
-        setAssigningBucket(bucketName);
-        const result = await dispatch(assignBucketSubject({ studentId: selectedStudent._id, subjectId, academicYearId: filterYear }));
-        setAssigningBucket('');
-        if (result.error) { setAssignError(result.payload || 'Assignment failed'); return; }
-        dispatch(fetchStudentSubjects({ studentId: selectedStudent._id, academicYear: filterYear }));
-        if (filterSection) dispatch(fetchPendingBuckets({ sectionId: filterSection, academicYearId: filterYear }));
-    };
+    const filteredGrades   = filterYear  ? grades.filter((g) => (g.academicYear?._id || g.academicYear) === filterYear) : [];
+    const filteredSections = filterGrade ? sections.filter((s) => (s.grade?._id || s.grade) === filterGrade) : [];
+    const selectedSection  = sections.find((s) => s._id === filterSection);
 
-    const handleChangeBucket = async (newSubjectId, bucketName) => {
-        if (!selectedStudent) return;
-        setAssignError('');
-        setAssigningBucket(bucketName);
-        const result = await dispatch(changeBucketSubject({ studentId: selectedStudent._id, newSubjectId, academicYearId: filterYear }));
-        setAssigningBucket('');
-        if (result.error) { setAssignError(result.payload || 'Change failed'); return; }
-        dispatch(fetchStudentSubjects({ studentId: selectedStudent._id, academicYear: filterYear }));
-    };
+    const bucketNames = Object.keys(bucketGrouped);
 
-    const filteredGrades   = filterYear ? grades.filter((g) => (g.academicYear?._id || g.academicYear) === filterYear) : grades;
-    const filteredSections = filterGrade ? sections.filter((s) => (s.grade?._id || s.grade) === filterGrade) : sections;
-    const filteredAllStudents = allStudents.filter((s) => s.name?.toLowerCase().includes(searchStudent.toLowerCase()) || s.email?.toLowerCase().includes(searchStudent.toLowerCase()));
-
-    const currentBucketFor = (bucketName) => studentBuckets.find((e) => e.bucket === bucketName);
+    // Which buckets has this student already filled?
+    const filledBucketNames = new Set(studentBuckets.map((e) => e.bucket));
+    const missingCount = bucketNames.filter((b) => !filledBucketNames.has(b)).length;
 
     return (
         <div className="app-shell">
             <Sidebar />
             <div className="main-content">
                 <div className="topbar">
-                    <h1 className="topbar__title">Subject enrollment</h1>
+                    <h1 className="topbar__title">Subject enrollment — Electives</h1>
                     <div className="topbar__right"><NotificationBell /></div>
                 </div>
 
                 <div className="page-body">
-                    {/* Filters */}
-                    <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-lg)', flexWrap: 'wrap' }}>
-                        <select className="form-input" style={{ width: 200 }} value={filterYear} onChange={(e) => { setFilterYear(e.target.value); setFilterGrade(''); setFilterSection(''); }}>
-                            <option value="">Select academic year</option>
-                            {years.map((y) => <option key={y._id} value={y._id}>{y.name}{y.isActive ? ' ✓' : ''}</option>)}
-                        </select>
-                        <select className="form-input" style={{ width: 220 }} value={filterGrade} onChange={(e) => { setFilterGrade(e.target.value); setFilterSection(''); }} disabled={!filterYear}>
-                            <option value="">Select grade</option>
-                            {filteredGrades.sort((a, b) => a.gradeNumber - b.gradeNumber).map((g) => <option key={g._id} value={g._id}>{g.name}{g.stream !== 'none' ? ` (${g.stream})` : ''}</option>)}
-                        </select>
-                        <select className="form-input" style={{ width: 160 }} value={filterSection} onChange={(e) => setFilterSection(e.target.value)} disabled={!filterGrade}>
-                            <option value="">Select section</option>
-                            {filteredSections.map((s) => <option key={s._id} value={s._id}>{s.grade?.gradeNumber}{s.name}</option>)}
-                        </select>
-                    </div>
 
-                    {/* Tabs */}
-                    <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-lg)' }}>
-                        <button className={`course-status-tab ${activeTab === 'pending' ? 'active' : ''}`} onClick={() => setActiveTab('pending')}>
-                            Pending buckets {pendingTotal > 0 && <span className="badge badge-error" style={{ marginLeft: 6 }}>{pendingTotal}</span>}
-                        </button>
-                        <button className={`course-status-tab ${activeTab === 'student' ? 'active' : ''}`} onClick={() => setActiveTab('student')} disabled={!selectedStudent}>
-                            Student view {selectedStudent ? `— ${selectedStudent.name}` : ''}
-                        </button>
-                    </div>
+                    {/* ── Step 1 & 2: Grade + Section picker ── */}
+                    <div className="sem-steps">
+                        <div className="sem-step">
+                            <span className="sem-step__num">1</span>
+                            <select className="form-input" value={filterYear} onChange={(e) => { setFilterYear(e.target.value); setFilterGrade(''); setFilterSection(''); setSelectedStudent(null); }}>
+                                <option value="">Select academic year</option>
+                                {years.map((y) => <option key={y._id} value={y._id}>{y.name}{y.isActive ? ' ✓' : ''}</option>)}
+                            </select>
+                        </div>
 
-                    {error && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{error}</div>}
+                        <div className="sem-step">
+                            <span className="sem-step__num">2</span>
+                            <select className="form-input" value={filterGrade} onChange={(e) => { setFilterGrade(e.target.value); setFilterSection(''); setSelectedStudent(null); }} disabled={!filterYear}>
+                                <option value="">Select grade</option>
+                                {filteredGrades.sort((a, b) => a.gradeNumber - b.gradeNumber).map((g) => (
+                                    <option key={g._id} value={g._id}>{g.name}{g.stream !== 'none' ? ` (${g.stream})` : ''}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="sem-step">
+                            <span className="sem-step__num">3</span>
+                            <select className="form-input" value={filterSection} onChange={(e) => { setFilterSection(e.target.value); setSelectedStudent(null); }} disabled={!filterGrade}>
+                                <option value="">Select section</option>
+                                {filteredSections.map((s) => <option key={s._id} value={s._id}>{s.grade?.gradeNumber}{s.name}</option>)}
+                            </select>
+                        </div>
+                    </div>
 
                     {!filterSection ? (
-                        <div className="alert alert-info">Select academic year, grade, and section to see pending bucket selections.</div>
-                    ) : activeTab === 'pending' ? (
-                        loading ? (
-                            <div className="empty-state"><div className="spinner" style={{ width: 36, height: 36, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} /></div>
-                        ) : pendingBuckets.length === 0 ? (
-                            <div className="empty-state">
-                                <div className="empty-state__icon">✅</div>
-                                <p>All students in this section have completed their bucket selections (or no buckets are defined for this grade/stream).</p>
-                            </div>
-                        ) : (
-                            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                                <table className="data-table">
-                                    <thead><tr><th>Student</th><th>Roll no.</th><th>Missing buckets</th><th>Action</th></tr></thead>
-                                    <tbody>
-                                    {pendingBuckets.map((p) => (
-                                        <tr key={p.student._id}>
-                                            <td style={{ fontWeight: 500 }}>{p.student.name}</td>
-                                            <td style={{ color: 'var(--color-text-secondary)' }}>{p.rollNumber || '—'}</td>
-                                            <td>
-                                                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                                                    {p.missingBuckets.map((b) => (
-                                                        <span key={b} className="badge badge-error" style={{ fontSize: '0.7rem' }}>{b}</span>
-                                                    ))}
-                                                </div>
-                                            </td>
-                                            <td><button className="btn btn-primary btn-sm" onClick={() => openStudentTab(p.student._id)}>Assign</button></td>
-                                        </tr>
-                                    ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )
+                        <div className="empty-state">
+                            <div className="empty-state__icon">🪣</div>
+                            <p>Select an academic year, grade, and section to begin assigning elective subjects.</p>
+                        </div>
                     ) : (
-                        <div className="subject-enroll-grid">
-                            {/* Student search panel */}
+                        <div className="sem-layout">
+
+                            {/* ── Step 3: Student list ── */}
                             <div className="card">
-                                <div className="card-header"><span className="card-title">Search student</span></div>
-                                <input className="form-input" placeholder="Search by name or email…" value={searchStudent} onChange={(e) => setSearchStudent(e.target.value)} style={{ marginBottom: 'var(--space-md)' }} />
-                                <div style={{ maxHeight: 360, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                    {filteredAllStudents.slice(0, 50).map((s) => (
-                                        <div
-                                            key={s._id}
-                                            onClick={() => openStudentTab(s._id)}
-                                            style={{ padding: 'var(--space-sm)', borderRadius: 'var(--radius-md)', cursor: 'pointer', background: selectedStudent?._id === s._id ? 'var(--color-primary-light)' : 'transparent', fontSize: '0.875rem' }}
-                                        >
-                                            <div style={{ fontWeight: 500 }}>{s.name}</div>
-                                            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>{s.email}</div>
-                                        </div>
-                                    ))}
+                                <div className="card-header">
+                                    <span className="card-title">Students in {selectedSection?.grade?.gradeNumber}{selectedSection?.name}</span>
+                                    {bucketNames.length > 0 && (
+                                        <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                      {bucketNames.length} bucket{bucketNames.length !== 1 ? 's' : ''} available
+                    </span>
+                                    )}
                                 </div>
+
+                                {studentsLoading ? (
+                                    <div className="empty-state" style={{ padding: 'var(--space-xl)' }}>
+                                        <div className="spinner" style={{ width: 28, height: 28, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} />
+                                    </div>
+                                ) : sectionStudents.length === 0 ? (
+                                    <div className="empty-state" style={{ padding: 'var(--space-xl)' }}>
+                                        <div className="empty-state__icon">👥</div>
+                                        <p>No students assigned to this section yet.</p>
+                                    </div>
+                                ) : (
+                                    <div className="sem-student-list">
+                                        {sectionStudents.map((record) => {
+                                            const isSelected = selectedStudent?._id === record.student?._id;
+                                            return (
+                                                <div
+                                                    key={record._id}
+                                                    className={`sem-student-row ${isSelected ? 'sem-student-row--active' : ''}`}
+                                                    onClick={() => openStudent(record.student)}
+                                                >
+                                                    <div className="sem-student-row__avatar">{record.student?.name?.charAt(0).toUpperCase()}</div>
+                                                    <div className="sem-student-row__info">
+                                                        <div className="sem-student-row__name">{record.student?.name}</div>
+                                                        <div className="sem-student-row__email">{record.student?.email}</div>
+                                                    </div>
+                                                    {record.rollNumber && <span className="sem-student-row__roll">{record.rollNumber}</span>}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
 
-                            {/* Student subject view */}
+                            {/* ── Step 4: Bucket assignment panel for selected student ── */}
                             <div className="card">
                                 {!selectedStudent ? (
-                                    <div className="empty-state"><div className="empty-state__icon">👤</div><p>Select a student to view and assign subjects.</p></div>
+                                    <div className="empty-state" style={{ padding: 'var(--space-xl)' }}>
+                                        <div className="empty-state__icon">👈</div>
+                                        <p>Select a student from the list to assign their elective subjects.</p>
+                                    </div>
                                 ) : (
                                     <>
-                                        <div className="card-header"><span className="card-title">{selectedStudent.name}'s subjects</span></div>
+                                        <div className="card-header">
+                                            <span className="card-title">{selectedStudent.name}'s electives</span>
+                                            <button className="btn btn-ghost btn-sm" onClick={closeStudent}>✕</button>
+                                        </div>
 
-                                        {assignError && <div className="alert alert-error" style={{ marginBottom: 'var(--space-md)' }}>{assignError}</div>}
+                                        {error && <div className="alert alert-error" style={{ marginBottom: 'var(--space-md)' }}>{error}</div>}
 
-                                        {/* Mandatory */}
-                                        <div style={{ marginBottom: 'var(--space-lg)' }}>
-                                            <p style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 'var(--space-sm)' }}>MANDATORY</p>
-                                            {studentMandatory.length === 0 ? (
-                                                <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>No mandatory subjects enrolled yet.</p>
-                                            ) : (
-                                                studentMandatory.map((e) => (
-                                                    <div key={e._id} className="subject-enroll-row">
-                                                        <span style={{ fontWeight: 500 }}>{e.subject?.name}</span>
-                                                        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>{e.subject?.code}</span>
+                                        {/* Mandatory subjects (read-only reference) */}
+                                        {studentMandatory.length > 0 && (
+                                            <div style={{ marginBottom: 'var(--space-lg)', paddingBottom: 'var(--space-lg)', borderBottom: '1px solid var(--color-border)' }}>
+                                                <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-sm)' }}>
+                                                    📌 Mandatory subjects ({studentMandatory.length})
+                                                </p>
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                                    {studentMandatory.map((e) => (
+                                                        <span key={e._id} className="badge badge-student" style={{ textTransform: 'none' }}>{e.subject?.name}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Bucket choices */}
+                                        {bucketsLoading || enrollLoading ? (
+                                            <div className="empty-state" style={{ padding: 'var(--space-xl)' }}>
+                                                <div className="spinner" style={{ width: 28, height: 28, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} />
+                                            </div>
+                                        ) : bucketNames.length === 0 ? (
+                                            <div className="empty-state" style={{ padding: 'var(--space-xl)' }}>
+                                                <div className="empty-state__icon">🪣</div>
+                                                <p>No elective buckets defined for this grade range yet. Create bucket subjects under Subjects management first.</p>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                {missingCount > 0 && (
+                                                    <div className="alert alert-info" style={{ marginBottom: 'var(--space-md)' }}>
+                                                        ⚠ {missingCount} bucket{missingCount !== 1 ? 's' : ''} still need a selection.
                                                     </div>
-                                                ))
-                                            )}
-                                        </div>
-
-                                        {/* Buckets */}
-                                        <div>
-                                            <p style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 'var(--space-sm)' }}>ELECTIVE BUCKETS</p>
-                                            {Object.keys(bucketOptions).length === 0 ? (
-                                                <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>No bucket subjects defined for this grade/stream.</p>
-                                            ) : (
-                                                Object.entries(bucketOptions).map(([bucketName, options]) => {
-                                                    const current = currentBucketFor(bucketName);
-                                                    return (
-                                                        <div key={bucketName} className="bucket-card">
-                                                            <div className="bucket-card__header">
-                                                                <span className="bucket-card__name">{bucketName}</span>
-                                                                {current && <span className="badge badge-success">{current.subject?.name}</span>}
+                                                )}
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+                                                    {bucketNames.map((bucketName) => {
+                                                        const options = bucketGrouped[bucketName];
+                                                        const current = currentChoiceFor(bucketName);
+                                                        return (
+                                                            <div key={bucketName} className="sem-bucket-card">
+                                                                <div className="sem-bucket-card__header">
+                                                                    <span className="sem-bucket-card__name">🪣 {bucketName}</span>
+                                                                    {current ? (
+                                                                        <span className="badge badge-success">{current.subject?.name}</span>
+                                                                    ) : (
+                                                                        <span className="badge badge-error">Not chosen</span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="sem-bucket-card__options">
+                                                                    {options.map((opt) => {
+                                                                        const isPicked = current?.subject?._id === opt._id;
+                                                                        const isSaving = assigningBucket === bucketName;
+                                                                        return (
+                                                                            <button
+                                                                                key={opt._id}
+                                                                                className={`sem-bucket-option ${isPicked ? 'sem-bucket-option--picked' : ''}`}
+                                                                                disabled={isSaving || isPicked}
+                                                                                onClick={() => handlePick(bucketName, opt._id)}
+                                                                            >
+                                                                                {isSaving && !isPicked ? (
+                                                                                    <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                                                                                ) : (
+                                                                                    <>
+                                                                                        <span>{opt.name}</span>
+                                                                                        <span className="sem-bucket-option__code">{opt.code}</span>
+                                                                                    </>
+                                                                                )}
+                                                                                {isPicked && <span className="sem-bucket-option__check">✓</span>}
+                                                                            </button>
+                                                                        );
+                                                                    })}
+                                                                </div>
                                                             </div>
-                                                            <div className="bucket-card__options">
-                                                                {options.map((opt) => {
-                                                                    const isSelected = current?.subject?._id === opt._id;
-                                                                    return (
-                                                                        <button
-                                                                            key={opt._id}
-                                                                            className={`bucket-option-btn ${isSelected ? 'selected' : ''}`}
-                                                                            disabled={assigningBucket === bucketName}
-                                                                            onClick={() => current ? handleChangeBucket(opt._id, bucketName) : handleAssignBucket(opt._id, bucketName)}
-                                                                        >
-                                                                            {assigningBucket === bucketName ? <span className="spinner" /> : (
-                                                                                <>
-                                                                                    <span>{opt.name}</span>
-                                                                                    {opt.teacher?.name && <span className="bucket-option-btn__teacher">{opt.teacher.name}</span>}
-                                                                                </>
-                                                                            )}
-                                                                        </button>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })
-                                            )}
-                                        </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </>
+                                        )}
                                     </>
                                 )}
                             </div>
