@@ -9,13 +9,13 @@ const submissionSchema = new mongoose.Schema(
         },
         student: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',          // ← was 'Student'; User is the correct registered model
+            ref: 'User',
             required: true
         },
-        course: {
+        subject: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'Course',
-            required: true
+            ref: 'Subject',
+            required: true,
         },
         fileUrl: {
             type: String,
@@ -60,6 +60,6 @@ const submissionSchema = new mongoose.Schema(
 
 // One submission per student per assignment
 submissionSchema.index({ assignment: 1, student: 1 }, { unique: true });
-submissionSchema.index({ course: 1, student: 1 });
+submissionSchema.index({ subject: 1, student: 1 });
 
 module.exports = mongoose.model('Submission', submissionSchema);

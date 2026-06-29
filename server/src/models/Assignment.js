@@ -14,12 +14,16 @@ const assignmentSchema = new mongoose.Schema(
         subject: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Subject',
-            default: null,          // ← not required at schema level
+            required: [true, 'Subject is required'],   // ← now required, course removed
         },
-        course: {
+        // Optional — set only when the teacher pins this assignment to one
+        // specific section they teach (via SubjectTeacherAssignment). Leaving
+        // it null means it applies to every section the teacher teaches for
+        // this subject.
+        section: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'Course',
-            required: [true, 'Course is required'],
+            ref: 'Section',
+            default: null,
         },
         teacher: {
             type: mongoose.Schema.Types.ObjectId,
@@ -58,7 +62,8 @@ const assignmentSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-assignmentSchema.index({ course: 1, dueDate: -1 });
-assignmentSchema.index({ subject: 1 });
+assignmentSchema.index({ subject: 1, dueDate: -1 });
+assignmentSchema.index({ section: 1 });
+assignmentSchema.index({ teacher: 1 });
 
 module.exports = mongoose.model('Assignment', assignmentSchema);

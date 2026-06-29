@@ -1,6 +1,6 @@
 const Submission = require('../models/Submission');
 const Assignment = require('../models/Assignment');
-const { notify } = require('../socket/socketHelpers');
+const { notify }  = require('../socket/socketHelpers');
 
 // POST /api/submissions — student submits
 exports.submitAssignment = async (req, res) => {
@@ -15,7 +15,6 @@ exports.submitAssignment = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Due date has passed. Late submissions not allowed.' });
         }
 
-        // Upsert — allow re-submission before deadline
         const submission = await Submission.findOneAndUpdate(
             { assignment: assignmentId, student: req.user._id },
             {
@@ -25,7 +24,7 @@ exports.submitAssignment = async (req, res) => {
                     isLate,
                     submittedAt: Date.now(),
                     status: 'submitted',
-                    course: assignment.course,
+                    subject: assignment.subject,
                     marks: null,
                     feedback: '',
                 },
@@ -52,11 +51,11 @@ exports.getAssignmentSubmissions = async (req, res) => {
     }
 };
 
-// GET /api/submissions/my?course=id — student: own submissions
+// GET /api/submissions/my?subject=id — student: own submissions
 exports.getMySubmissions = async (req, res) => {
     try {
         const filter = { student: req.user._id };
-        if (req.query.course) filter.course = req.query.course;
+        if (req.query.subject) filter.subject = req.query.subject;
 
         const submissions = await Submission.find(filter)
             .populate('assignment', 'title totalMarks dueDate')
