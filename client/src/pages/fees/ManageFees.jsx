@@ -86,7 +86,7 @@ export default function ManageFees() {
     /* ── load grades once ── */
     useEffect(() => {
         api.get('/grades')
-            .then(({ data }) => setGrades(data.grades || []))
+            .then(({ data }) => setGrades(data.grades || data.records || []))
             .catch(() => setGrades([]));
     }, []);
 
@@ -95,7 +95,7 @@ export default function ManageFees() {
         if (!selectedGrade) { setSections([]); setSelectedSection(''); return; }
         setSectionsLoading(true);
         api.get(`/sections?grade=${selectedGrade}`)
-            .then(({ data }) => setSections(data.sections || []))
+            .then(({ data }) => setSections(data.sections || data.records || []))
             .catch(() => setSections([]))
             .finally(() => setSectionsLoading(false));
     }, [selectedGrade]);
@@ -155,7 +155,7 @@ export default function ManageFees() {
             const { data } = await api.get(
                 `/student-sections?student=${student._id}&status=active&limit=1`
             );
-            const ss = (data.studentSections || [])[0] || null;
+            const ss = (data.records || [])[0] || null;
             setStudentSection(ss);
         } catch (err) {
             console.error('Failed to load active section:', err);
@@ -625,7 +625,7 @@ export default function ManageFees() {
                                                         {studentSectionLoading
                                                             ? 'Loading section…'
                                                             : studentSection
-                                                                ? sectionLabel(studentSection.section)
+                                                                ? `${studentSection.grade?.name || ''} ${studentSection.section?.displayName || studentSection.section?.name || ''}`.trim()
                                                                 : 'No active section — cannot bill'}
                                                     </span>
                                                 </div>
