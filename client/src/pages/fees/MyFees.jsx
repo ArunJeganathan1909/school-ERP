@@ -81,7 +81,7 @@ export default function MyFees() {
                                                     <div>
                                                         <div className="fee-card__title">{fee.title}</div>
                                                         <div className="fee-card__meta">
-                                                            {fee.course?.code} · {fee.feeType} · {fee.academicYear}
+                                                            {fee.section?.grade?.name} {fee.section?.name} · {fee.feeType} · {fee.academicYear?.name} · Sem {fee.semester}
                                                         </div>
                                                     </div>
                                                     <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '3px 10px', borderRadius: 'var(--radius-full)', background: ss.bg, color: ss.color }}>

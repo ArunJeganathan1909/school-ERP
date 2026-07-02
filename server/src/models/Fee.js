@@ -33,10 +33,31 @@ const feeSchema = new mongoose.Schema(
             ref: 'User',
             required: true
         },
-        course: {
+        // A fee invoice belongs to the student's class section for a given
+        // term (tuition, exam, etc. are billed per section/grade, not per
+        // subject). grade + academicYear are denormalized from the Section
+        // at creation time — same pattern as SubjectEnrollment — so fees can
+        // be filtered/reported on without populating through Section.
+        section: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'Course',
-            required: true
+            ref: 'Section',
+            required: [true, 'Section is required'],
+        },
+        grade: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Grade',
+            required: [true, 'Grade is required'],
+        },
+        academicYear: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'AcademicYear',
+            required: [true, 'Academic year is required'],
+        },
+        semester: {
+            type: Number,
+            default: 1,
+            min: 1,
+            max: 4,
         },
         feeType: {
             type: String,
@@ -75,17 +96,6 @@ const feeSchema = new mongoose.Schema(
             type: Number,
             default: 0
         },
-        academicYear: {
-            type: String,
-            default: () => {
-                const y = new Date().getFullYear();
-                return `${y}-${y+1}`;
-            },
-        },
-        semester: {
-            type: Number,
-            default: 1
-        },
         notes: {
             type: String,
             default: '',
@@ -114,7 +124,16 @@ feeSchema.pre('save', async function () {
 });
 
 feeSchema.index({ student: 1, status: 1 });
-feeSchema.index({ course: 1, academicYear: 1 });
+feeSchema.index({ section: 1, academicYear: 1, semester: 1 });
+feeSchema.index({ grade: 1, academicYear: 1 });
 feeSchema.index({ dueDate: 1, status: 1 });
+
+// Guards against accidentally generating the exact same recurring invoice
+// (same title) for the same student/section/term twice — e.g. re-running
+// the "generate for section" action for the same semester by mistake.
+feeSchema.index(
+    { student: 1, section: 1, academicYear: 1, semester: 1, title: 1 },
+    { unique: true }
+);
 
 module.exports = mongoose.model('Fee', feeSchema);

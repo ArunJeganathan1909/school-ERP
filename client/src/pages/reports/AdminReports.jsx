@@ -5,7 +5,7 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import Sidebar from '../../components/Sidebar';
-import { fetchAdminDashboard, fetchCourseAnalytics } from '../../store/slices/reportSlice';
+import { fetchAdminDashboard, fetchSubjectAnalytics } from '../../store/slices/reportSlice';
 import api from '../../api/axios';
 import './AdminReports.css';
 
@@ -13,13 +13,13 @@ const PALETTE = ['#4F46E5', '#7C3AED', '#059669', '#D97706', '#DC2626', '#2563EB
 
 export default function AdminReports() {
     const dispatch = useDispatch();
-    const { adminStats: stats, enrollmentTrend, courseAnalytics, loading } = useSelector((s) => s.reports);
+    const { adminStats: stats, enrollmentTrend, subjectAnalytics, loading } = useSelector((s) => s.reports);
     const [activeTab, setActiveTab] = useState('overview');
     const [exporting, setExporting] = useState('');
 
     useEffect(() => {
         dispatch(fetchAdminDashboard());
-        dispatch(fetchCourseAnalytics());
+        dispatch(fetchSubjectAnalytics());
     }, [dispatch]);
 
     const handleExport = async (type) => {
@@ -51,7 +51,7 @@ export default function AdminReports() {
         { name: 'Outstanding', value: stats.totalExpected - stats.totalCollected },
     ] : [];
 
-    const TABS = ['overview', 'courses', 'exports'];
+    const TABS = ['overview', 'subjects', 'exports'];
 
     return (
         <div className="app-shell">
@@ -87,7 +87,7 @@ export default function AdminReports() {
                                         {[
                                             { label: 'Students', value: stats.totalStudents, icon: '👨‍🎓', color: '#4F46E5', bg: '#EEF2FF' },
                                             { label: 'Teachers', value: stats.totalTeachers, icon: '👩‍🏫', color: '#7C3AED', bg: '#F5F3FF' },
-                                            { label: 'Active courses', value: stats.totalCourses, icon: '📚', color: '#0F766E', bg: '#F0FDFA' },
+                                            { label: 'Active subjects', value: stats.totalSubjects, icon: '📚', color: '#0F766E', bg: '#F0FDFA' },
                                             { label: 'Enrollments', value: stats.activeEnrollments, icon: '🎓', color: '#2563EB', bg: '#EFF6FF' },
                                             { label: 'Attendance rate', value: `${stats.attendanceRate}%`, icon: '✅', color: stats.attendanceRate >= 75 ? '#059669' : '#DC2626', bg: stats.attendanceRate >= 75 ? '#ECFDF5' : '#FEF2F2' },
                                             { label: 'Fee collection', value: `${stats.feeCollectionRate}%`, icon: '💳', color: '#D97706', bg: '#FFFBEB' },
@@ -170,24 +170,23 @@ export default function AdminReports() {
                                 </>
                             )}
 
-                            {/* ── COURSES TAB ── */}
-                            {activeTab === 'courses' && (
+                            {/* ── SUBJECTS TAB ── */}
+                            {activeTab === 'subjects' && (
                                 <>
-                                    {courseAnalytics.length > 0 ? (
+                                    {subjectAnalytics.length > 0 ? (
                                         <>
                                             {/* Enrollment bar chart */}
                                             <div className="card" style={{ marginBottom: 'var(--space-lg)' }}>
                                                 <div className="card-header">
-                                                    <span className="card-title">Students per course</span>
+                                                    <span className="card-title">Students per subject</span>
                                                 </div>
                                                 <ResponsiveContainer width="100%" height={280}>
-                                                    <BarChart data={courseAnalytics.slice(0, 10)} margin={{ top: 8, right: 16, left: 0, bottom: 40 }}>
+                                                    <BarChart data={subjectAnalytics.slice(0, 10)} margin={{ top: 8, right: 16, left: 0, bottom: 40 }}>
                                                         <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
                                                         <XAxis dataKey="code" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
                                                         <YAxis tick={{ fontSize: 11 }} />
                                                         <Tooltip formatter={(v, n) => [v, n]} />
                                                         <Bar dataKey="enrolled" fill="#4F46E5" name="Enrolled" radius={[4, 4, 0, 0]} />
-                                                        <Bar dataKey="maxStudents" fill="#E5E7EB" name="Capacity" radius={[4, 4, 0, 0]} />
                                                     </BarChart>
                                                 </ResponsiveContainer>
                                             </div>
@@ -195,61 +194,63 @@ export default function AdminReports() {
                                             {/* Attendance rate chart */}
                                             <div className="card" style={{ marginBottom: 'var(--space-lg)' }}>
                                                 <div className="card-header">
-                                                    <span className="card-title">Attendance rate by course (last 30 days)</span>
+                                                    <span className="card-title">Attendance rate by subject (last 30 days)</span>
                                                 </div>
                                                 <ResponsiveContainer width="100%" height={240}>
-                                                    <BarChart data={courseAnalytics.slice(0, 10)} margin={{ top: 8, right: 16, left: 0, bottom: 40 }}>
+                                                    <BarChart data={subjectAnalytics.slice(0, 10)} margin={{ top: 8, right: 16, left: 0, bottom: 40 }}>
                                                         <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
                                                         <XAxis dataKey="code" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
                                                         <YAxis tick={{ fontSize: 11 }} domain={[0, 100]} />
                                                         <Tooltip formatter={(v) => [`${v}%`, 'Attendance rate']} />
                                                         <Bar dataKey="attendanceRate" name="Attendance %" radius={[4, 4, 0, 0]}>
-                                                            {courseAnalytics.slice(0, 10).map((c, i) => (
-                                                                <Cell key={i} fill={c.attendanceRate >= 75 ? '#059669' : c.attendanceRate >= 60 ? '#D97706' : '#DC2626'} />
+                                                            {subjectAnalytics.slice(0, 10).map((s, i) => (
+                                                                <Cell key={i} fill={s.attendanceRate >= 75 ? '#059669' : s.attendanceRate >= 60 ? '#D97706' : '#DC2626'} />
                                                             ))}
                                                         </Bar>
                                                     </BarChart>
                                                 </ResponsiveContainer>
                                             </div>
 
-                                            {/* Course analytics table */}
+                                            {/* Subject analytics table */}
                                             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                                                 <table className="data-table">
                                                     <thead>
                                                     <tr>
-                                                        <th>Course</th>
-                                                        <th>Department</th>
+                                                        <th>Subject</th>
+                                                        <th>Bucket</th>
                                                         <th>Enrolled</th>
-                                                        <th>Capacity</th>
+                                                        <th>Credits</th>
                                                         <th>Attendance</th>
                                                         <th>Submissions</th>
                                                         <th>Graded</th>
                                                     </tr>
                                                     </thead>
                                                     <tbody>
-                                                    {courseAnalytics.map((c) => (
-                                                        <tr key={c._id}>
+                                                    {subjectAnalytics.map((s) => (
+                                                        <tr key={s._id}>
                                                             <td>
-                                                                <div style={{ fontWeight: 500 }}>{c.title}</div>
+                                                                <div style={{ fontWeight: 500 }}>{s.name}</div>
                                                                 <div style={{ fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: 600 }}>
-                                                                    {c.code}
+                                                                    {s.code}
                                                                 </div>
                                                             </td>
-                                                            <td style={{ color: 'var(--color-text-secondary)' }}>{c.department}</td>
-                                                            <td style={{ fontWeight: 600 }}>{c.enrolled}</td>
-                                                            <td style={{ color: 'var(--color-text-muted)' }}>{c.maxStudents}</td>
+                                                            <td style={{ color: 'var(--color-text-secondary)' }}>
+                                                                {s.isMandatory ? 'Mandatory' : (s.bucket || '—')}
+                                                            </td>
+                                                            <td style={{ fontWeight: 600 }}>{s.enrolled}</td>
+                                                            <td style={{ color: 'var(--color-text-muted)' }}>{s.credits}</td>
                                                             <td>
           <span style={{
               fontWeight: 600,
-              color: c.attendanceRate >= 75 ? '#059669'
-                  : c.attendanceRate >= 60 ? '#D97706'
+              color: s.attendanceRate >= 75 ? '#059669'
+                  : s.attendanceRate >= 60 ? '#D97706'
                       : '#DC2626',
           }}>
-            {c.attendanceRate}%
+            {s.attendanceRate}%
           </span>
                                                             </td>
-                                                            <td style={{ color: 'var(--color-text-secondary)' }}>{c.submissions}</td>
-                                                            <td style={{ color: 'var(--color-text-secondary)' }}>{c.graded}</td>
+                                                            <td style={{ color: 'var(--color-text-secondary)' }}>{s.submissions}</td>
+                                                            <td style={{ color: 'var(--color-text-secondary)' }}>{s.graded}</td>
                                                         </tr>
                                                     ))}
                                                     </tbody>
@@ -259,7 +260,7 @@ export default function AdminReports() {
                                     ) : (
                                         <div className="empty-state">
                                             <div className="empty-state__icon">📊</div>
-                                            <p>No course data available yet.</p>
+                                            <p>No subject data available yet.</p>
                                         </div>
                                     )}
                                 </>
@@ -280,7 +281,7 @@ export default function AdminReports() {
                                         {
                                             key: 'attendance',
                                             title: 'Attendance report',
-                                            desc: 'Attendance summary for all students across all courses with individual rates.',
+                                            desc: 'Attendance summary for all students across all subjects with individual rates.',
                                             icon: '✅',
                                             color: '#059669',
                                             bg: '#ECFDF5',

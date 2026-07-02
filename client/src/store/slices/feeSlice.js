@@ -24,6 +24,17 @@ export const createFee = createAsyncThunk('fees/create', async (feeData, { rejec
     } catch (err) { return rejectWithValue(err.response?.data?.message); }
 });
 
+// Generates the same recurring invoice for every active student in a
+// section (e.g. "Semester 2 tuition" for Grade 7A). Returns a summary
+// rather than fee documents, since it can create many at once — the caller
+// should re-fetch the list afterward.
+export const createSectionFees = createAsyncThunk('fees/createForSection', async (payload, { rejectWithValue }) => {
+    try {
+        const { data } = await api.post('/fees/bulk-section', payload);
+        return data;
+    } catch (err) { return rejectWithValue(err.response?.data?.message); }
+});
+
 export const recordPayment = createAsyncThunk(
     'fees/payment',
     async ({ id, amount, method, reference }, { dispatch, rejectWithValue }) => {
@@ -55,10 +66,14 @@ const feeSlice = createSlice({
         loading:  false,
         error:    null,
         paymentError: null,
+        bulkResult: null,
+        bulkLoading: false,
+        bulkError: null,
     },
     reducers: {
         clearFeeError(state)        { state.error = null; },
         clearPaymentError(state)    { state.paymentError = null; },
+        clearBulkResult(state)      { state.bulkResult = null; state.bulkError = null; },
     },
     extraReducers: (builder) => {
         builder
@@ -88,6 +103,11 @@ const feeSlice = createSlice({
                 s.total += 1;
             })
             .addCase(createFee.rejected, (s, a) => { s.error = a.payload; })
+
+            /* createSectionFees — bulk, so just surface the summary; caller re-fetches the list */
+            .addCase(createSectionFees.pending,   (s) => { s.bulkLoading = true; s.bulkError = null; s.bulkResult = null; })
+            .addCase(createSectionFees.fulfilled, (s, a) => { s.bulkLoading = false; s.bulkResult = a.payload; })
+            .addCase(createSectionFees.rejected,  (s, a) => { s.bulkLoading = false; s.bulkError = a.payload; })
 
             /* recordPayment — replace the updated fee in the list */
             .addCase(recordPayment.pending,   (s) => { s.paymentError = null; })
@@ -124,5 +144,5 @@ const feeSlice = createSlice({
     },
 });
 
-export const { clearFeeError, clearPaymentError } = feeSlice.actions;
+export const { clearFeeError, clearPaymentError, clearBulkResult } = feeSlice.actions;
 export default feeSlice.reducer;
