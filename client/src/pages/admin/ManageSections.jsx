@@ -7,7 +7,7 @@ import { fetchGrades } from '../../store/slices/gradeSlice';
 import { fetchSections, createSection, updateSection, deleteSection, clearSectionError } from '../../store/slices/sectionSlice';
 import {
     assignStudentToSection, transferStudent, withdrawStudent,
-    clearStudentSectionError, clearLastResult,
+    fetchAllStudentSections, clearStudentSectionError, clearLastResult,
 } from '../../store/slices/studentSectionSlice';
 import { syncStudentEnrollments, clearSyncMessage } from '../../store/slices/subjectEnrollmentSlice';
 import api from '../../api/axios';
@@ -20,7 +20,7 @@ export default function ManageSections() {
     const { list: years }    = useSelector((s) => s.academicYears);
     const { list: grades }   = useSelector((s) => s.grades);
     const { list: sections, loading, error } = useSelector((s) => s.sections);
-    const { lastResult } = useSelector((s) => s.studentSections);
+    const { list: activeAssignments, lastResult } = useSelector((s) => s.studentSections);
     const { lastSyncMessage, syncing } = useSelector((s) => s.subjectEnrollments);
 
     const [filterYear,  setFilterYear]  = useState('');
@@ -57,6 +57,13 @@ export default function ManageSections() {
         if (filterGrade) params.grade        = filterGrade;
         dispatch(fetchSections(params));
     }, [dispatch, filterYear, filterGrade]);
+
+    // School-wide active assignments for the selected year — used to keep a
+    // student from being offered for a second section while already active
+    // in one elsewhere (a student can only hold one active section per year).
+    useEffect(() => {
+        if (filterYear) dispatch(fetchAllStudentSections({ academicYear: filterYear, status: 'active' }));
+    }, [dispatch, filterYear]);
 
     useEffect(() => { if (selectedSection) loadSectionStudents(selectedSection._id); }, [selectedSection]);
 
@@ -118,6 +125,7 @@ export default function ManageSections() {
         setAssignStudentId('');
         setRollNumber('');
         loadSectionStudents(selectedSection._id);
+        dispatch(fetchAllStudentSections({ academicYear: filterYear, status: 'active' }));
     };
 
     const handleTransfer = async (newSectionId) => {
@@ -129,13 +137,17 @@ export default function ManageSections() {
             transferNote: 'Transferred via admin panel',
         }));
         setTransferTarget(null);
-        if (!result.error) loadSectionStudents(selectedSection._id);
+        if (!result.error) {
+            loadSectionStudents(selectedSection._id);
+            dispatch(fetchAllStudentSections({ academicYear: filterYear, status: 'active' }));
+        }
     };
 
     const handleWithdraw = async (recordId) => {
         if (!window.confirm('Withdraw this student from the section? All subject enrollments will be dropped.')) return;
         await dispatch(withdrawStudent(recordId));
         loadSectionStudents(selectedSection._id);
+        dispatch(fetchAllStudentSections({ academicYear: filterYear, status: 'active' }));
     };
 
     // Retroactively sync mandatory subjects for one student — needed when a
@@ -153,8 +165,11 @@ export default function ManageSections() {
     };
 
     const filteredGrades   = filterYear ? grades.filter((g) => (g.academicYear?._id || g.academicYear) === filterYear) : grades;
-    const assignedIds      = new Set(sectionStudents.map((r) => r.student?._id));
-    const unassigned        = allStudents.filter((s) => !assignedIds.has(s._id));
+    // A student can only hold one active section per academic year (enforced
+    // by a unique index on the backend), so anyone active in ANY section this
+    // year — not just the one currently selected — must be excluded here.
+    const globallyAssignedIds = new Set(activeAssignments.map((r) => r.student?._id || r.student));
+    const unassigned          = allStudents.filter((s) => !globallyAssignedIds.has(s._id));
 
     // Sections in same grade but different section (for transfer target list) — also allow cross-grade
     const transferOptions = sections.filter((s) => s._id !== selectedSection?._id);
@@ -179,7 +194,7 @@ export default function ManageSections() {
                         </select>
                         <select className="form-input" style={{ width: 220 }} value={filterGrade} onChange={(e) => setFilterGrade(e.target.value)} disabled={!filterYear}>
                             <option value="">All grades</option>
-                            {filteredGrades.sort((a, b) => a.gradeNumber - b.gradeNumber).map((g) => (
+                            {[...filteredGrades].sort((a, b) => a.gradeNumber - b.gradeNumber).map((g) => (
                                 <option key={g._id} value={g._id}>{g.name}{g.stream !== 'none' ? ` (${g.stream})` : ''}</option>
                             ))}
                         </select>
@@ -309,7 +324,7 @@ export default function ManageSections() {
                                     <label className="form-label">Grade *</label>
                                     <select className="form-input" name="grade" value={form.grade} onChange={handleChange} required>
                                         <option value="">Select grade</option>
-                                        {filteredGrades.sort((a, b) => a.gradeNumber - b.gradeNumber).map((g) => (
+                                        {[...filteredGrades].sort((a, b) => a.gradeNumber - b.gradeNumber).map((g) => (
                                             <option key={g._id} value={g._id}>{g.name}{g.stream !== 'none' ? ` (${g.stream})` : ''}</option>
                                         ))}
                                     </select>
