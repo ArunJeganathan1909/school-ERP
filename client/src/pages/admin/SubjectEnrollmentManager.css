@@ -117,6 +117,7 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     padding: var(--space-md);
+    transition: border-color var(--transition-fast);
 }
 
 .sem-bucket-card__header {
@@ -162,9 +163,9 @@
 }
 
 .sem-bucket-option--picked {
-    border-color: #059669;
-    background: #ECFDF5;
-    color: #059669;
+    border-color: var(--color-success);
+    background: var(--color-success-bg);
+    color: var(--color-success);
     font-weight: 600;
 }
 
@@ -175,11 +176,36 @@
 }
 
 .sem-bucket-option--picked .sem-bucket-option__code {
-    color: #059669;
+    color: var(--color-success);
     opacity: 0.7;
 }
 
 .sem-bucket-option__check {
     margin-left: var(--space-sm);
     font-weight: 700;
+}
+
+/* ── Empty state ──
+   Previously undefined — the "select a section", "no students", and
+   "select a student" branches rendered as bare unstyled divs. */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: var(--space-sm);
+    padding: var(--space-2xl) var(--space-lg);
+    background: var(--color-surface);
+    border: 1.5px dashed var(--color-border);
+    border-radius: var(--radius-lg);
+    color: var(--color-text-secondary);
+    font-size: 0.9375rem;
+}
+
+.empty-state__icon {
+    font-size: 2.25rem;
+    line-height: 1;
+    margin-bottom: var(--space-xs);
+    opacity: 0.85;
 }

@@ -1,3 +1,149 @@
+/* ==========================================================================
+   ManageSubjects — page-specific styles
+   Uses tokens from variables.css only. No changes to global/layout/components.
+   ========================================================================== */
+
+/* ── Stats strip (top of page) ──
+   NOTE: JSX renders .subject-stats-strip / __item / __val / __label.
+   These were previously undefined — the old .subject-stats rules below
+   never actually matched anything and have been replaced. */
+.subject-stats-strip {
+    display: flex;
+    gap: var(--space-xl);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-md) var(--space-xl);
+    margin-bottom: var(--space-lg);
+    box-shadow: var(--shadow-sm);
+    flex-wrap: wrap;
+}
+
+.subject-stats-strip__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 72px;
+}
+
+.subject-stats-strip__val {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    line-height: 1;
+}
+
+.subject-stats-strip__label {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* ── Segmented tab control ──
+   Used for scope-mode filter, mandatory/elective filter, and the
+   scope + type toggles inside the create/edit modal. Previously unstyled. */
+.course-status-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: 8px var(--space-md);
+    border-radius: var(--radius-md);
+    border: 1.5px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+}
+
+.course-status-tab:hover:not(:disabled):not(.active) {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    background: var(--color-primary-light);
+}
+
+.course-status-tab.active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+    box-shadow: var(--shadow-sm);
+}
+
+.course-status-tab:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ── Data table (subject list) ──
+   Previously undefined — SubjectTable rendered as an unstyled native table. */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.data-table thead tr {
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.data-table th {
+    text-align: left;
+    padding: var(--space-sm) var(--space-lg);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+}
+
+.data-table td {
+    padding: var(--space-md) var(--space-lg);
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+}
+
+.data-table tbody tr {
+    transition: background var(--transition-fast);
+}
+
+.data-table tbody tr:hover {
+    background: var(--color-bg);
+}
+
+.data-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* ── Empty state ──
+   Previously undefined — loading/empty branches rendered as bare unstyled divs. */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: var(--space-sm);
+    padding: var(--space-2xl) var(--space-lg);
+    background: var(--color-surface);
+    border: 1.5px dashed var(--color-border);
+    border-radius: var(--radius-lg);
+    color: var(--color-text-secondary);
+    font-size: 0.9375rem;
+}
+
+.empty-state__icon {
+    font-size: 2.25rem;
+    line-height: 1;
+    margin-bottom: var(--space-xs);
+    opacity: 0.85;
+}
+
+/* ── Filters row ── */
 .subject-filters {
     display: flex;
     gap: var(--space-sm);
@@ -6,17 +152,7 @@
     align-items: center;
 }
 
-.subject-stats {
-    display: flex;
-    gap: var(--space-xl);
-    margin-bottom: var(--space-lg);
-    font-size: 0.875rem;
-    color: var(--color-text-secondary);
-}
-
-.subject-stats__item { display: flex; gap: 4px; align-items: center; }
-
-/* Group */
+/* ── Group headers (mandatory / bucket sections) ── */
 .subject-group { margin-bottom: var(--space-xl); }
 
 .subject-group__header {
@@ -50,7 +186,7 @@
     font-weight: 700;
 }
 
-/* Subject type toggle */
+/* ── Subject type toggle (Mandatory vs Bucket cards, if used) ── */
 .subject-type-toggle {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -66,6 +202,10 @@
     border-radius: var(--radius-md);
     cursor: pointer;
     transition: all var(--transition-fast);
+}
+
+.subject-type-option:hover {
+    border-color: var(--color-primary);
 }
 
 .subject-type-option.active {
@@ -86,7 +226,7 @@
     color: var(--color-text-muted);
 }
 
-/* Bucket grid */
+/* ── Bucket grid ── */
 .bucket-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -103,11 +243,20 @@
     cursor: pointer;
     transition: all var(--transition-fast);
     font-size: 0.875rem;
+    color: var(--color-text-secondary);
+}
+
+.bucket-option:hover {
+    border-color: var(--color-primary);
+    color: var(--color-text-primary);
 }
 
 .bucket-option.active {
     font-weight: 600;
     border-width: 2px;
+    border-color: var(--color-primary);
+    background: var(--color-primary-light);
+    color: var(--color-primary);
 }
 
 .bucket-option input { display: none; }
@@ -116,10 +265,12 @@
 
 .bucket-option__label {
     font-size: 0.875rem;
-    color: var(--color-text-primary);
+    color: inherit;
 }
 
 @media (max-width: 600px) {
     .bucket-grid { grid-template-columns: 1fr; }
     .subject-type-toggle { grid-template-columns: 1fr; }
+    .subject-stats-strip { gap: var(--space-lg); padding: var(--space-md); }
+    .data-table th, .data-table td { padding: var(--space-sm) var(--space-md); }
 }

@@ -1,0 +1,121 @@
+/* ==========================================================================
+   TimetableManager — page-specific styles
+   Uses tokens from variables.css only. No changes to global/layout/components.
+
+   NOTE: TimetableManager.jsx currently doesn't import any CSS file. It
+   renders .data-table, .empty-state, and .course-status-tab (the working-
+   days toggle), which up to now only rendered correctly by accident,
+   whenever another page's CSS (e.g. ManageSubjects.css) had already been
+   loaded into the bundle. This file makes those styles canonical for this
+   page on their own. To use it, add this import near the top of
+   TimetableManager.jsx, alongside the other imports:
+
+       import './TimetableManager.css';
+
+   Rules below mirror the same values used on the other pages so nothing
+   will visually shift if a differently-ordered bundle also loads them.
+   ========================================================================== */
+
+/* ── Working-days toggle (course-status-tab) ── */
+.course-status-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: 8px var(--space-md);
+    border-radius: var(--radius-md);
+    border: 1.5px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+}
+
+.course-status-tab:hover:not(:disabled):not(.active) {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    background: var(--color-primary-light);
+}
+
+.course-status-tab.active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+    box-shadow: var(--shadow-sm);
+}
+
+/* ── Timetable list table ── */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.data-table thead tr {
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.data-table th {
+    text-align: left;
+    padding: var(--space-sm) var(--space-lg);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+}
+
+.data-table td {
+    padding: var(--space-md) var(--space-lg);
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+}
+
+.data-table tbody tr {
+    transition: background var(--transition-fast);
+}
+
+.data-table tbody tr:hover {
+    background: var(--color-bg);
+}
+
+.data-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* ── Empty state ── */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: var(--space-sm);
+    padding: var(--space-2xl) var(--space-lg);
+    background: var(--color-surface);
+    border: 1.5px dashed var(--color-border);
+    border-radius: var(--radius-lg);
+    color: var(--color-text-secondary);
+    font-size: 0.9375rem;
+}
+
+.empty-state__icon {
+    font-size: 2.25rem;
+    line-height: 1;
+    margin-bottom: var(--space-xs);
+    opacity: 0.85;
+}
+
+/* ── Timetable grid (edit view) polish ──
+   The grid table itself is still built with inline styles in the JSX
+   (cell borders, hover-via-onMouseEnter, etc). These rules only add a
+   couple of low-risk, class-free touches that can't conflict with
+   anything: a hover lift for the whole grid card, and a print-friendly
+   rule so the grid can be printed as a physical timetable if needed. */
+@media print {
+    .sidebar, .topbar, .modal-overlay { display: none !important; }
+    .main-content { margin-left: 0 !important; }
+}

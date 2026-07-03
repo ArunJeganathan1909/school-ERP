@@ -1,8 +1,96 @@
+/* ==========================================================================
+   ManageGrades — page-specific styles
+   Uses tokens from variables.css only. No changes to global/layout/components.
+   ========================================================================== */
+
 .grade-year-group { margin-bottom: var(--space-xl); }
-.grade-year-label { font-size: 0.8125rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-text-muted); margin-bottom: var(--space-md); }
-.grade-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--space-md); }
-.grade-card { display: flex; flex-direction: column; gap: var(--space-xs); padding: var(--space-lg); }
-.grade-card__header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-xs); }
-.grade-card__number { width: 40px; height: 40px; background: var(--color-primary-light); color: var(--color-primary); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 1.125rem; font-weight: 800; }
-.grade-card__actions { display: flex; gap: var(--space-xs); }
-.grade-card__name { font-size: 1rem; font-weight: 700; color: var(--color-text-primary); }
+
+.grade-year-label {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-xs);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.grade-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: var(--space-md);
+}
+
+.grade-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    padding: var(--space-lg);
+    transition: box-shadow var(--transition-base), transform var(--transition-base), border-color var(--transition-base);
+}
+
+.grade-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+    border-color: var(--color-primary);
+}
+
+.grade-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-xs);
+}
+
+.grade-card__number {
+    width: 40px;
+    height: 40px;
+    background: var(--color-primary-light);
+    color: var(--color-primary);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.125rem;
+    font-weight: 800;
+}
+
+.grade-card__actions {
+    display: flex;
+    gap: var(--space-xs);
+}
+
+.grade-card__name {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+}
+
+/* ── Empty state ──
+   Previously undefined — the "no grades found" branch rendered as a bare div. */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: var(--space-sm);
+    padding: var(--space-2xl) var(--space-lg);
+    background: var(--color-surface);
+    border: 1.5px dashed var(--color-border);
+    border-radius: var(--radius-lg);
+    color: var(--color-text-secondary);
+    font-size: 0.9375rem;
+}
+
+.empty-state__icon {
+    font-size: 2.25rem;
+    line-height: 1;
+    margin-bottom: var(--space-xs);
+    opacity: 0.85;
+}
+
+@media (max-width: 600px) {
+    .grade-cards-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+}

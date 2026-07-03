@@ -1,25 +1,196 @@
-.section-filters { display: flex; gap: var(--space-sm); margin-bottom: var(--space-lg); flex-wrap: wrap; }
-.sections-layout { display: grid; grid-template-columns: 340px 1fr; gap: var(--space-lg); align-items: start; }
-@media (max-width: 900px) { .sections-layout { grid-template-columns: 1fr; } }
-.sections-list { display: flex; flex-direction: column; gap: var(--space-md); }
-.section-card { cursor: pointer; transition: box-shadow var(--transition-base), border-color var(--transition-base), transform var(--transition-base); }
-.section-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
-.section-card--selected { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
-.section-card__header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-sm); }
-.section-card__display { font-size: 1.75rem; font-weight: 800; color: var(--color-primary); line-height: 1; }
-.section-card__actions { display: flex; gap: var(--space-xs); }
-.section-card__meta { display: flex; gap: var(--space-lg); font-size: 0.875rem; color: var(--color-text-secondary); }
-.student-panel { position: sticky; top: 80px; }
-.student-panel__header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-md); }
-.student-panel__header h3 { font-size: 1rem; font-weight: 700; }
-.assign-form { margin-bottom: var(--space-lg); padding-bottom: var(--space-lg); border-bottom: 1px solid var(--color-border); }
-.assign-form__fields { display: flex; gap: var(--space-sm); flex-wrap: wrap; }
-.assign-form__fields .form-input { flex: 1; min-width: 160px; }
-.student-panel__list { display: flex; flex-direction: column; gap: 2px; max-height: 440px; overflow-y: auto; }
-.student-panel__row { display: flex; align-items: center; gap: var(--space-md); padding: var(--space-sm) var(--space-xs); border-radius: var(--radius-md); transition: background var(--transition-fast); }
-.student-panel__row:hover { background: var(--color-bg); }
-.student-panel__avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--color-primary-light); color: var(--color-primary); font-weight: 700; font-size: 0.875rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.student-panel__info { flex: 1; min-width: 0; }
-.student-panel__name { font-size: 0.9375rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.student-panel__email { font-size: 0.8125rem; color: var(--color-text-muted); }
-.student-panel__roll { font-size: 0.8125rem; font-weight: 600; color: var(--color-primary); flex-shrink: 0; min-width: 70px; text-align: right; }
+/* ==========================================================================
+   ManageSections — page-specific styles
+   Uses tokens from variables.css only. No changes to global/layout/components.
+   ========================================================================== */
+
+.section-filters {
+    display: flex;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-lg);
+    flex-wrap: wrap;
+}
+
+.sections-layout {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: var(--space-lg);
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .sections-layout { grid-template-columns: 1fr; }
+}
+
+.sections-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.section-card {
+    cursor: pointer;
+    transition: box-shadow var(--transition-base), border-color var(--transition-base), transform var(--transition-base);
+}
+
+.section-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+    border-color: var(--color-primary);
+}
+
+.section-card--selected {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+}
+
+.section-card--selected:hover {
+    transform: none;
+}
+
+.section-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-sm);
+}
+
+.section-card__display {
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: var(--color-primary);
+    line-height: 1;
+}
+
+.section-card__actions {
+    display: flex;
+    gap: var(--space-xs);
+}
+
+.section-card__meta {
+    display: flex;
+    gap: var(--space-lg);
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+}
+
+/* ── Student panel (right column) ── */
+.student-panel {
+    position: sticky;
+    top: 80px;
+}
+
+.student-panel__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-md);
+}
+
+.student-panel__header h3 {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.assign-form {
+    margin-bottom: var(--space-lg);
+    padding-bottom: var(--space-lg);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.assign-form__fields {
+    display: flex;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+}
+
+.assign-form__fields .form-input {
+    flex: 1;
+    min-width: 160px;
+}
+
+.student-panel__list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 440px;
+    overflow-y: auto;
+}
+
+.student-panel__row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-sm) var(--space-xs);
+    border-radius: var(--radius-md);
+    transition: background var(--transition-fast);
+}
+
+.student-panel__row:hover {
+    background: var(--color-bg);
+}
+
+.student-panel__avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--color-primary-light);
+    color: var(--color-primary);
+    font-weight: 700;
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.student-panel__info {
+    flex: 1;
+    min-width: 0;
+}
+
+.student-panel__name {
+    font-size: 0.9375rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.student-panel__email {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+}
+
+.student-panel__roll {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-primary);
+    flex-shrink: 0;
+    min-width: 70px;
+    text-align: right;
+}
+
+/* ── Empty state ──
+   Previously undefined — loading/empty branches in the student panel
+   rendered as bare unstyled divs. */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: var(--space-sm);
+    padding: var(--space-2xl) var(--space-lg);
+    background: var(--color-surface);
+    border: 1.5px dashed var(--color-border);
+    border-radius: var(--radius-lg);
+    color: var(--color-text-secondary);
+    font-size: 0.9375rem;
+}
+
+.empty-state__icon {
+    font-size: 2.25rem;
+    line-height: 1;
+    margin-bottom: var(--space-xs);
+    opacity: 0.85;
+}

@@ -11,6 +11,7 @@ import { fetchSections } from '../../store/slices/sectionSlice';
 import api from '../../api/axios';
 import Sidebar from '../../components/Sidebar';
 import NotificationBell from '../../components/NotificationBell';
+import './TimetableManager.css';
 
 const ALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const DEFAULT_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
