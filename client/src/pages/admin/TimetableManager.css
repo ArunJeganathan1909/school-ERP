@@ -1,22 +1,185 @@
-/* ==========================================================================
-   TimetableManager — page-specific styles
-   Uses tokens from variables.css only. No changes to global/layout/components.
+/* ── Existing course-status-tab, data-table, empty-state rules stay ── */
 
-   NOTE: TimetableManager.jsx currently doesn't import any CSS file. It
-   renders .data-table, .empty-state, and .course-status-tab (the working-
-   days toggle), which up to now only rendered correctly by accident,
-   whenever another page's CSS (e.g. ManageSubjects.css) had already been
-   loaded into the bundle. This file makes those styles canonical for this
-   page on their own. To use it, add this import near the top of
-   TimetableManager.jsx, alongside the other imports:
+/* ── Step progress banner ── */
+.tt-intro-banner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    margin-bottom: var(--space-xl);
+    flex-wrap: wrap;
+}
 
-       import './TimetableManager.css';
+.tt-intro-banner__step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
 
-   Rules below mirror the same values used on the other pages so nothing
-   will visually shift if a differently-ordered bundle also loads them.
-   ========================================================================== */
+.tt-intro-banner__step span {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 2px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--color-text-muted);
+}
 
-/* ── Working-days toggle (course-status-tab) ── */
+.tt-intro-banner__step.active span {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+}
+
+.tt-intro-banner__step p {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+}
+
+.tt-intro-banner__arrow {
+    color: var(--color-text-muted);
+    font-size: 1.25rem;
+}
+
+/* ── Structure card ── */
+.tt-structure-card { transition: box-shadow var(--transition-base); }
+.tt-structure-card:hover { box-shadow: var(--shadow-md); }
+.tt-structure-card__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: var(--space-md);
+    gap: var(--space-md);
+    flex-wrap: wrap;
+}
+.tt-structure-card__name {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin-bottom: 2px;
+}
+
+/* ── Timetable grid ── */
+.tt-grid {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 600px;
+}
+
+.tt-grid thead tr {
+    background: var(--color-bg);
+    border-bottom: 2px solid var(--color-border);
+}
+
+.tt-grid__period-col {
+    width: 100px;
+    text-align: left;
+    padding: var(--space-sm) var(--space-md);
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.tt-grid__day-col {
+    text-align: center;
+    padding: var(--space-sm);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    min-width: 120px;
+}
+
+.tt-grid__period-cell {
+    padding: var(--space-sm) var(--space-md);
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: top;
+    background: var(--color-bg);
+}
+
+.tt-grid__break-cell {
+    padding: var(--space-sm);
+    border-bottom: 1px solid var(--color-border);
+    text-align: center;
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    background: #FFFBEB;
+    font-style: italic;
+}
+
+.tt-grid__slot-cell {
+    padding: var(--space-sm);
+    border-bottom: 1px solid var(--color-border);
+    border-left: 1px solid var(--color-border);
+    vertical-align: top;
+    min-height: 60px;
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+.tt-grid__slot-cell:hover { background: var(--color-primary-light); }
+
+.tt-grid__slot-cell--filled { background: #FAFBFF; }
+
+.tt-grid__slot-cell--empty { background: var(--color-surface); }
+
+.tt-slot-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 2px;
+}
+
+.tt-slot-code {
+    font-size: 0.7rem;
+    color: var(--color-primary);
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.tt-slot-free {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+}
+
+/* ── Slot modal subject options ── */
+.tt-subject-option {
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-md);
+    border: 1.5px solid var(--color-border);
+    background: var(--color-surface);
+    cursor: pointer;
+    text-align: left;
+    transition: all var(--transition-fast);
+    width: 100%;
+    font-family: inherit;
+}
+
+.tt-subject-option:hover:not(:disabled) {
+    border-color: var(--color-primary);
+    background: var(--color-primary-light);
+}
+
+.tt-subject-option--current {
+    border-color: #059669;
+    background: #ECFDF5;
+}
+
+.tt-subject-option--busy {
+    cursor: not-allowed;
+    opacity: 0.6;
+    border-color: #FECACA;
+    background: #FFF5F5;
+}
+
+/* ── Working-days toggle ── */
 .course-status-tab {
     display: inline-flex;
     align-items: center;
@@ -46,75 +209,6 @@
     box-shadow: var(--shadow-sm);
 }
 
-/* ── Timetable list table ── */
-.data-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.875rem;
-}
-
-.data-table thead tr {
-    background: var(--color-bg);
-    border-bottom: 1px solid var(--color-border);
-}
-
-.data-table th {
-    text-align: left;
-    padding: var(--space-sm) var(--space-lg);
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-muted);
-}
-
-.data-table td {
-    padding: var(--space-md) var(--space-lg);
-    border-bottom: 1px solid var(--color-border);
-    vertical-align: middle;
-}
-
-.data-table tbody tr {
-    transition: background var(--transition-fast);
-}
-
-.data-table tbody tr:hover {
-    background: var(--color-bg);
-}
-
-.data-table tbody tr:last-child td {
-    border-bottom: none;
-}
-
-/* ── Empty state ── */
-.empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    gap: var(--space-sm);
-    padding: var(--space-2xl) var(--space-lg);
-    background: var(--color-surface);
-    border: 1.5px dashed var(--color-border);
-    border-radius: var(--radius-lg);
-    color: var(--color-text-secondary);
-    font-size: 0.9375rem;
-}
-
-.empty-state__icon {
-    font-size: 2.25rem;
-    line-height: 1;
-    margin-bottom: var(--space-xs);
-    opacity: 0.85;
-}
-
-/* ── Timetable grid (edit view) polish ──
-   The grid table itself is still built with inline styles in the JSX
-   (cell borders, hover-via-onMouseEnter, etc). These rules only add a
-   couple of low-risk, class-free touches that can't conflict with
-   anything: a hover lift for the whole grid card, and a print-friendly
-   rule so the grid can be printed as a physical timetable if needed. */
 @media print {
     .sidebar, .topbar, .modal-overlay { display: none !important; }
     .main-content { margin-left: 0 !important; }

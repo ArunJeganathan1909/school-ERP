@@ -32,7 +32,14 @@ const periodSchema = new mongoose.Schema(
 
 const timetableSchema = new mongoose.Schema(
     {
-        // ── Grade-based ──────────────────────────────────────────────────────────
+        // ── Link to shared structure ──────────────────────────────────────────────
+        structureRef: {
+            type:    mongoose.Schema.Types.ObjectId,
+            ref:     'TimetableStructure',
+            default: null,
+        },
+
+        // ── Grade-based ───────────────────────────────────────────────────────────
         section: {
             type:    mongoose.Schema.Types.ObjectId,
             ref:     'Section',
@@ -54,31 +61,18 @@ const timetableSchema = new mongoose.Schema(
             min:     1,
             max:     4,
         },
-        // ── Legacy course-based ──────────────────────────────────────────────────
-        course: {
-            type:    mongoose.Schema.Types.ObjectId,
-            ref:     'Course',
-            default: null,
-        },
-        // ── Common ───────────────────────────────────────────────────────────────
+
         term: {
             type:     String,
             required: [true, 'Term label is required'],
             trim:     true,
-            // e.g. "2024-2025 Semester 1" or "Grade 7A — Semester 2"
         },
         workingDays: {
             type:    [String],
             enum:    ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'],
             default: ['Monday','Tuesday','Wednesday','Thursday','Friday'],
         },
-        periods: {
-            type:     [periodSchema],
-            validate: {
-                validator: (v) => v.length > 0,
-                message:   'At least one period is required',
-            },
-        },
+        periods:  [periodSchema],
         slots:    [slotSchema],
         isActive: { type: Boolean, default: true },
         createdBy: {
@@ -90,9 +84,10 @@ const timetableSchema = new mongoose.Schema(
 );
 
 // One active timetable per section per semester
-timetableSchema.index({ section: 1, semester: 1, isActive: 1 }, { unique: true, sparse: true });
-// Legacy: one per course+term
-timetableSchema.index({ course: 1, term: 1 }, { unique: true, sparse: true });
+timetableSchema.index(
+    { section: 1, semester: 1 },
+    { unique: true, sparse: true }
+);
 timetableSchema.index({ academicYear: 1 });
 timetableSchema.index({ grade: 1, semester: 1 });
 

@@ -56,6 +56,7 @@ app.use('/api/notifications',      require('./routes/notificationRoutes'));
 app.use('/api/announcements',      require('./routes/announcementRoutes'));
 app.use('/api/reports',            require('./routes/reportRoutes'));
 app.use('/api/timetables',         require('./routes/timetableRoutes'));
+app.use('/api/timetable-structures', require('./routes/timetableStructureRoutes'));
 
 app.use('/api/subject-teacher-assignments', require('./routes/subjectTeacherAssignmentRoutes'));
 
