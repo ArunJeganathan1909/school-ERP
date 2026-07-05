@@ -62,6 +62,16 @@ export const deleteTimetable = createAsyncThunk('timetables/delete', async (id, 
     }
 });
 
+// ── Admin: view a specific teacher's merged schedule ──
+export const fetchTimetableByTeacher = createAsyncThunk('timetables/fetchByTeacher', async (teacherId, { rejectWithValue }) => {
+    try {
+        const { data } = await api.get(`/timetables/teacher/${teacherId}`);
+        return { teacher: data.teacher, timetables: data.timetables };
+    } catch (err) {
+        return rejectWithValue(err.response?.data?.message || 'Failed to fetch teacher schedule');
+    }
+});
+
 // ── Student: view timetables for enrolled courses ──
 export const fetchMyTimetableAsStudent = createAsyncThunk('timetables/fetchMineStudent', async (_, { rejectWithValue }) => {
     try {
@@ -88,7 +98,9 @@ const timetableSlice = createSlice({
         list:    [],   // admin: all timetables
         current: null, // admin: timetable being edited
         mine:    [],   // student/teacher: my timetables
+        teacherView: null, // admin: { teacher, timetables } for the teacher currently being viewed
         loading: false,
+        teacherViewLoading: false,
         error:   null,
         lastSync: null, // { applied: [sectionNames], skipped: [{section, reason}] } from the last bucket sync
     },
@@ -96,6 +108,7 @@ const timetableSlice = createSlice({
         clearTimetableError(state)  { state.error = null; },
         clearCurrentTimetable(state) { state.current = null; },
         clearLastSync(state) { state.lastSync = null; },
+        clearTeacherView(state) { state.teacherView = null; },
     },
     extraReducers: (builder) => {
         builder
@@ -197,6 +210,20 @@ const timetableSlice = createSlice({
                 state.error   = action.payload;
             })
 
+            // ── fetchTimetableByTeacher (admin) ──
+            .addCase(fetchTimetableByTeacher.pending, (state) => {
+                state.teacherViewLoading = true;
+                state.error   = null;
+            })
+            .addCase(fetchTimetableByTeacher.fulfilled, (state, action) => {
+                state.teacherViewLoading = false;
+                state.teacherView = action.payload;
+            })
+            .addCase(fetchTimetableByTeacher.rejected, (state, action) => {
+                state.teacherViewLoading = false;
+                state.error   = action.payload;
+            })
+
             // ── fetchMyTimetableAsTeacher ──
             .addCase(fetchMyTimetableAsTeacher.pending, (state) => {
                 state.loading = true;
@@ -213,5 +240,5 @@ const timetableSlice = createSlice({
     },
 });
 
-export const { clearTimetableError, clearCurrentTimetable, clearLastSync } = timetableSlice.actions;
+export const { clearTimetableError, clearCurrentTimetable, clearLastSync, clearTeacherView } = timetableSlice.actions;
 export default timetableSlice.reducer;

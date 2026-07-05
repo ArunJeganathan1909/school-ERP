@@ -41,6 +41,150 @@ const COLORS_LOCAL = {
     breakBg: '#F3F4F6',
 };
 
+// ── Teacher schedule helpers ──────────────────────────────────────────────────
+// Shared by every endpoint that views or downloads a teacher's merged
+// schedule — the teacher's own "my classes" view/PDF, and the admin's
+// per-teacher and bulk-teacher views/PDFs. Keeping this in one place means
+// the "which slots are this teacher's" logic can't drift between them.
+
+// Loads every active section timetable this teacher has a class in, and
+// flags which slots/subjects in each are theirs.
+async function buildTeacherSchedule(teacherId) {
+    const assignments = await SubjectTeacherAssignment.find({
+        teacher:  teacherId,
+        isActive: true,
+    }).select('subject section');
+
+    if (assignments.length === 0) return { assignments, timetables: [] };
+
+    const sectionIds = [...new Set(assignments.map((a) => String(a.section)))];
+
+    const timetables = await populateTimetable(
+        Timetable.find({ section: { $in: sectionIds }, isActive: true })
+    );
+
+    const withFlag = timetables.map((tt) => {
+        const obj = tt.toObject ? tt.toObject({ virtuals: true }) : tt;
+
+        const teacherSubjectsInSection = assignments
+            .filter((a) => String(a.section) === String(obj.section?._id || obj.section))
+            .map((a) => String(a.subject));
+
+        obj.myTeacherSubjectIds = teacherSubjectsInSection;
+        obj.slots = obj.slots.map((slot) => ({
+            ...slot,
+            isMyClass: slot.subjects?.some((subj) =>
+                teacherSubjectsInSection.includes(String(subj?._id || subj))
+            ) || false,
+        }));
+        return obj;
+    });
+
+    return { assignments, timetables: withFlag };
+}
+
+// Collapses several per-section timetables into one merged day×period grid
+// for a single teacher — mirrors the client-side merge in TimetableViewer.jsx.
+function buildMergedTeacherGrid(assignments, timetables) {
+    const workingDaysSet  = new Set();
+    const periodsByNumber = new Map();
+    const cellMap         = new Map(); // "day|period" -> [{ subject, sectionLabel }]
+
+    timetables.forEach((tt) => {
+        tt.workingDays?.forEach((d) => workingDaysSet.add(d));
+        tt.periods?.forEach((p) => {
+            if (!periodsByNumber.has(p.number)) periodsByNumber.set(p.number, p);
+        });
+
+        const teacherSubjectsInSection = assignments
+            .filter((a) => String(a.section) === String(tt.section?._id || tt.section))
+            .map((a) => String(a.subject));
+
+        const sectionLabel = tt.section
+            ? `${tt.grade?.gradeNumber || ''}${tt.section?.name}`
+            : tt.term;
+
+        tt.slots?.forEach((slot) => {
+            const mySubjects = (slot.subjects || []).filter((s) =>
+                teacherSubjectsInSection.includes(String(s._id || s))
+            );
+            if (mySubjects.length === 0) return;
+
+            const key     = `${slot.day}|${slot.period}`;
+            const entries = cellMap.get(key) || [];
+            mySubjects.forEach((subject) => entries.push({ subject, sectionLabel }));
+            cellMap.set(key, entries);
+        });
+    });
+
+    return {
+        workingDays: DAY_ORDER.filter((d) => workingDaysSet.has(d)),
+        periods:     [...periodsByNumber.values()].sort((a, b) => a.number - b.number),
+        cellMap,
+    };
+}
+
+// Draws one teacher's merged schedule (header + grid + legend) onto whatever
+// page `doc` is currently on. Caller decides page breaks between teachers.
+function drawMergedTeacherPage(doc, { teacherName, grid, todayName, sectionsCount }) {
+    const sectionsUsed = new Set();
+
+    addHeader(
+        doc,
+        'Teaching Schedule',
+        `${teacherName || 'Teacher'}  ·  across ${sectionsCount} section${sectionsCount !== 1 ? 's' : ''}`
+    );
+
+    const getCellEntries = (day, periodNumber) => {
+        const entries = grid.cellMap.get(`${day}|${periodNumber}`) || [];
+        return entries.map((e) => {
+            sectionsUsed.add(e.sectionLabel);
+            return {
+                title:    e.subject.name,
+                subtitle: `Grade ${e.sectionLabel}`,
+                color:    colorForKey(e.sectionLabel),
+            };
+        });
+    };
+
+    drawTimetableGrid(doc, { workingDays: grid.workingDays, periods: grid.periods, getCellEntries, todayName });
+
+    const legendItems = [...sectionsUsed].map((label) => ({ label: `Grade ${label}`, color: colorForKey(label) }));
+    drawLegend(doc, legendItems);
+}
+
+// Draws one section's schedule (header + grid + legend) onto whatever page
+// `doc` is currently on. Caller decides page breaks between sections.
+function drawSectionSchedulePage(doc, { timetable, sectionLabel, subtitleExtra, todayName }) {
+    addHeader(
+        doc,
+        'Class Timetable',
+        `${sectionLabel}  ·  ${timetable.term}  ·  Semester ${timetable.semester}${subtitleExtra ? '  ·  ' + subtitleExtra : ''}`
+    );
+
+    const workingDays = timetable.workingDays || [];
+    const periods      = [...(timetable.periods || [])].sort((a, b) => a.number - b.number);
+    const bucketsUsed  = new Set();
+
+    const getCellEntries = (day, periodNumber) => {
+        const slot = timetable.slots.find((s) => s.day === day && s.period === periodNumber);
+        if (!slot?.subjects?.length) return [];
+        return slot.subjects.map((subj) => {
+            if (slot.bucket) bucketsUsed.add(slot.bucket);
+            return {
+                title:    subj.name,
+                subtitle: subj.code,
+                color:    colorForKey(slot.bucket || subj.code),
+            };
+        });
+    };
+
+    drawTimetableGrid(doc, { workingDays, periods, getCellEntries, todayName });
+
+    const legendItems = [...bucketsUsed].map((bucket) => ({ label: bucket, color: colorForKey(bucket) }));
+    drawLegend(doc, legendItems);
+}
+
 // Draws a bordered day×period grid with colored, multi-line cell entries.
 // `getCellEntries(day, periodNumber)` must return an array of
 // { title, subtitle, color } — one per subject occupying that slot.
@@ -677,43 +821,27 @@ exports.getMyTimetableAsStudent = async (req, res) => {
 // ── GET /api/timetables/my/teacher ───────────────────────────────────────────
 exports.getMyTimetableAsTeacher = async (req, res) => {
     try {
-        // Find all sections where this teacher is assigned to at least one subject
-        const assignments = await SubjectTeacherAssignment.find({
-            teacher:  req.user._id,
-            isActive: true,
-        }).select('subject section');
+        const { timetables } = await buildTeacherSchedule(req.user._id);
+        res.status(200).json({ success: true, timetables });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
 
-        if (assignments.length === 0) {
-            return res.status(200).json({ success: true, timetables: [] });
+// ── GET /api/timetables/teacher/:teacherId ───────────────────────────────────
+// Admin: view any teacher's merged weekly schedule (JSON) — same shape as
+// the teacher's own "my/teacher" view, so the admin UI can reuse the same
+// client-side merge logic.
+exports.getTimetableByTeacher = async (req, res) => {
+    try {
+        const User = require('../models/User');
+        const teacher = await User.findById(req.params.teacherId).select('name email role');
+        if (!teacher || teacher.role !== 'teacher') {
+            return res.status(404).json({ success: false, message: 'Teacher not found' });
         }
 
-        const subjectIds = assignments.map((a) => a.subject);
-        const sectionIds = [...new Set(assignments.map((a) => String(a.section)))];
-
-        const timetables = await populateTimetable(
-            Timetable.find({ section: { $in: sectionIds }, isActive: true })
-        );
-
-        // Flag which slots belong to this teacher's subjects
-        const withFlag = timetables.map((tt) => {
-            const obj = tt.toObject ? tt.toObject({ virtuals: true }) : tt;
-
-            // Which subjects does this teacher teach in THIS section?
-            const teacherSubjectsInSection = assignments
-                .filter((a) => String(a.section) === String(tt.section?._id || tt.section))
-                .map((a) => String(a.subject));
-
-            obj.myTeacherSubjectIds = teacherSubjectsInSection;
-            obj.slots = obj.slots.map((slot) => ({
-                ...slot,
-                isMyClass: slot.subjects?.some((subj) =>
-                    teacherSubjectsInSection.includes(String(subj?._id || subj))
-                ) || false,
-            }));
-            return obj;
-        });
-
-        res.status(200).json({ success: true, timetables: withFlag });
+        const { timetables } = await buildTeacherSchedule(teacher._id);
+        res.status(200).json({ success: true, teacher, timetables });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -755,33 +883,180 @@ exports.downloadMyTimetablePdfAsStudent = async (req, res) => {
         res.setHeader('Content-Disposition', `attachment; filename="timetable-${sectionLabel.replace(/\s+/g, '')}.pdf"`);
         doc.pipe(res);
 
-        addHeader(
-            doc,
-            'Class Timetable',
-            `${sectionLabel}  ·  ${timetable.term}  ·  Semester ${timetable.semester}  ·  ${studentSection.section?.academicYear?.name || ''}  ·  ${req.user.name || ''}`
-        );
+        const subtitleExtra = [studentSection.section?.academicYear?.name, req.user.name].filter(Boolean).join('  ·  ');
+        drawSectionSchedulePage(doc, { timetable, sectionLabel, subtitleExtra, todayName });
 
-        const workingDays = timetable.workingDays || [];
-        const periods      = [...(timetable.periods || [])].sort((a, b) => a.number - b.number);
-        const bucketsUsed  = new Set();
+        addFooters(doc);
+        doc.end();
+    } catch (err) {
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: err.message });
+        } else {
+            res.end();
+        }
+    }
+};
 
-        const getCellEntries = (day, periodNumber) => {
-            const slot = timetable.slots.find((s) => s.day === day && s.period === periodNumber);
-            if (!slot?.subjects?.length) return [];
-            return slot.subjects.map((subj) => {
-                if (slot.bucket) bucketsUsed.add(slot.bucket);
-                return {
-                    title:    subj.name,
-                    subtitle: subj.code,
-                    color:    colorForKey(slot.bucket || subj.code),
-                };
-            });
-        };
+// ── GET /api/timetables/:id/pdf ───────────────────────────────────────────────
+// Admin: download any single section's timetable as a PDF, by timetable id
+// (independent of who's logged in — this is the admin-facing equivalent of
+// the student's "my/student/pdf" self-service download).
+exports.downloadTimetablePdf = async (req, res) => {
+    try {
+        const timetable = await populateTimetable(Timetable.findById(req.params.id));
+        if (!timetable) {
+            return res.status(404).json({ success: false, message: 'Timetable not found' });
+        }
 
-        drawTimetableGrid(doc, { workingDays, periods, getCellEntries, todayName });
+        const sectionLabel = timetable.section
+            ? `Grade ${timetable.grade?.gradeNumber || ''}${timetable.section?.name || ''}`
+            : timetable.term;
+        const todayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
 
-        const legendItems = [...bucketsUsed].map((bucket) => ({ label: bucket, color: colorForKey(bucket) }));
-        drawLegend(doc, legendItems);
+        const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape', bufferPages: true });
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="timetable-${sectionLabel.replace(/\s+/g, '')}.pdf"`);
+        doc.pipe(res);
+
+        drawSectionSchedulePage(doc, { timetable, sectionLabel, subtitleExtra: timetable.academicYear?.name || '', todayName });
+
+        addFooters(doc);
+        doc.end();
+    } catch (err) {
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: err.message });
+        } else {
+            res.end();
+        }
+    }
+};
+
+// ── GET /api/timetables/download-all/sections ─────────────────────────────────
+// Admin: one PDF containing every matching section timetable, one section
+// per page. Accepts the same filters as GET /api/timetables (academicYear,
+// grade, semester, isActive) so "download all" matches whatever the admin
+// currently has filtered in the list view.
+exports.downloadAllSectionTimetablesPdf = async (req, res) => {
+    try {
+        const { academicYear, grade, semester, isActive } = req.query;
+        const filter = { isActive: isActive === undefined ? true : isActive === 'true' };
+        if (academicYear) filter.academicYear = academicYear;
+        if (grade)        filter.grade        = grade;
+        if (semester)     filter.semester     = Number(semester);
+
+        const timetables = await populateTimetable(Timetable.find(filter));
+        if (timetables.length === 0) {
+            return res.status(404).json({ success: false, message: 'No timetables match this filter' });
+        }
+
+        // Predictable reading order: grade number, then section name.
+        timetables.sort((a, b) => {
+            const ga = a.grade?.gradeNumber ?? 0, gb = b.grade?.gradeNumber ?? 0;
+            if (ga !== gb) return ga - gb;
+            return (a.section?.name || '').localeCompare(b.section?.name || '');
+        });
+
+        const todayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
+
+        const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape', bufferPages: true });
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename="all-section-timetables.pdf"');
+        doc.pipe(res);
+
+        timetables.forEach((timetable, idx) => {
+            if (idx > 0) doc.addPage();
+            const sectionLabel = timetable.section
+                ? `Grade ${timetable.grade?.gradeNumber || ''}${timetable.section?.name || ''}`
+                : timetable.term;
+            drawSectionSchedulePage(doc, { timetable, sectionLabel, subtitleExtra: timetable.academicYear?.name || '', todayName });
+        });
+
+        addFooters(doc);
+        doc.end();
+    } catch (err) {
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: err.message });
+        } else {
+            res.end();
+        }
+    }
+};
+
+// ── GET /api/timetables/teacher/:teacherId/pdf ────────────────────────────────
+// Admin: download one teacher's merged schedule as a PDF, by teacher id.
+exports.downloadTimetablePdfByTeacher = async (req, res) => {
+    try {
+        const User = require('../models/User');
+        const teacher = await User.findById(req.params.teacherId).select('name email role');
+        if (!teacher || teacher.role !== 'teacher') {
+            return res.status(404).json({ success: false, message: 'Teacher not found' });
+        }
+
+        const { assignments, timetables } = await buildTeacherSchedule(teacher._id);
+        if (timetables.length === 0) {
+            return res.status(404).json({ success: false, message: 'This teacher has no classes assigned yet' });
+        }
+
+        const grid = buildMergedTeacherGrid(assignments, timetables);
+        const todayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
+
+        const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape', bufferPages: true });
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="teaching-schedule-${(teacher.name || 'teacher').replace(/\s+/g, '')}.pdf"`);
+        doc.pipe(res);
+
+        drawMergedTeacherPage(doc, { teacherName: teacher.name, grid, todayName, sectionsCount: timetables.length });
+
+        addFooters(doc);
+        doc.end();
+    } catch (err) {
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: err.message });
+        } else {
+            res.end();
+        }
+    }
+};
+
+// ── GET /api/timetables/download-all/teachers ─────────────────────────────────
+// Admin: one PDF with one merged schedule per teacher who has at least one
+// active subject assignment — one teacher per page.
+exports.downloadAllTeacherTimetablesPdf = async (req, res) => {
+    try {
+        const teacherIds = await SubjectTeacherAssignment.find({ isActive: true }).distinct('teacher');
+        if (teacherIds.length === 0) {
+            return res.status(404).json({ success: false, message: 'No teacher assignments found' });
+        }
+
+        const User = require('../models/User');
+        const teachers = await User.find({ _id: { $in: teacherIds }, role: 'teacher' })
+            .select('name email')
+            .sort({ name: 1 });
+
+        // Build every teacher's schedule up front, so we know whether there's
+        // anything to render before committing to PDF response headers.
+        const schedules = [];
+        for (const teacher of teachers) {
+            const { assignments, timetables } = await buildTeacherSchedule(teacher._id);
+            if (timetables.length === 0) continue;
+            schedules.push({ teacher, grid: buildMergedTeacherGrid(assignments, timetables), sectionsCount: timetables.length });
+        }
+
+        if (schedules.length === 0) {
+            return res.status(404).json({ success: false, message: 'No active timetables found for any teacher' });
+        }
+
+        const todayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
+
+        const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape', bufferPages: true });
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename="all-teacher-schedules.pdf"');
+        doc.pipe(res);
+
+        schedules.forEach(({ teacher, grid, sectionsCount }, idx) => {
+            if (idx > 0) doc.addPage();
+            drawMergedTeacherPage(doc, { teacherName: teacher.name, grid, todayName, sectionsCount });
+        });
 
         addFooters(doc);
         doc.end();
@@ -799,86 +1074,20 @@ exports.downloadMyTimetablePdfAsStudent = async (req, res) => {
 // mirrors the merged grid shown in TimetableViewer.jsx.
 exports.downloadMyTimetablePdfAsTeacher = async (req, res) => {
     try {
-        const assignments = await SubjectTeacherAssignment.find({
-            teacher:  req.user._id,
-            isActive: true,
-        }).select('subject section');
-
-        if (assignments.length === 0) {
+        const { assignments, timetables } = await buildTeacherSchedule(req.user._id);
+        if (timetables.length === 0) {
             return res.status(404).json({ success: false, message: 'No classes assigned yet' });
         }
 
-        const sectionIds = [...new Set(assignments.map((a) => String(a.section)))];
-
-        const timetables = await populateTimetable(
-            Timetable.find({ section: { $in: sectionIds }, isActive: true })
-        );
-
-        const workingDaysSet  = new Set();
-        const periodsByNumber = new Map();
-        const cellMap         = new Map(); // "day|period" -> [{ subject, sectionLabel }]
-
-        timetables.forEach((tt) => {
-            const obj = tt.toObject ? tt.toObject({ virtuals: true }) : tt;
-
-            obj.workingDays?.forEach((d) => workingDaysSet.add(d));
-            obj.periods?.forEach((p) => {
-                if (!periodsByNumber.has(p.number)) periodsByNumber.set(p.number, p);
-            });
-
-            const teacherSubjectsInSection = assignments
-                .filter((a) => String(a.section) === String(obj.section?._id || obj.section))
-                .map((a) => String(a.subject));
-
-            const sectionLabel = obj.section
-                ? `${obj.grade?.gradeNumber || ''}${obj.section?.name}`
-                : obj.term;
-
-            obj.slots?.forEach((slot) => {
-                const mySubjects = (slot.subjects || []).filter((s) =>
-                    teacherSubjectsInSection.includes(String(s._id || s))
-                );
-                if (mySubjects.length === 0) return;
-
-                const key     = `${slot.day}|${slot.period}`;
-                const entries = cellMap.get(key) || [];
-                mySubjects.forEach((subject) => entries.push({ subject, sectionLabel }));
-                cellMap.set(key, entries);
-            });
-        });
-
-        const workingDays = DAY_ORDER.filter((d) => workingDaysSet.has(d));
-        const periods      = [...periodsByNumber.values()].sort((a, b) => a.number - b.number);
-        const todayName    = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
-        const sectionsUsed = new Set();
+        const grid      = buildMergedTeacherGrid(assignments, timetables);
+        const todayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
 
         const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape', bufferPages: true });
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="my-teaching-schedule.pdf"`);
         doc.pipe(res);
 
-        addHeader(
-            doc,
-            'Teaching Schedule',
-            `${req.user.name || 'Teacher'}  ·  across ${timetables.length} section${timetables.length !== 1 ? 's' : ''}`
-        );
-
-        const getCellEntries = (day, periodNumber) => {
-            const entries = cellMap.get(`${day}|${periodNumber}`) || [];
-            return entries.map((e) => {
-                sectionsUsed.add(e.sectionLabel);
-                return {
-                    title:    e.subject.name,
-                    subtitle: `Grade ${e.sectionLabel}`,
-                    color:    colorForKey(e.sectionLabel),
-                };
-            });
-        };
-
-        drawTimetableGrid(doc, { workingDays, periods, getCellEntries, todayName });
-
-        const legendItems = [...sectionsUsed].map((label) => ({ label: `Grade ${label}`, color: colorForKey(label) }));
-        drawLegend(doc, legendItems);
+        drawMergedTeacherPage(doc, { teacherName: req.user.name, grid, todayName, sectionsCount: timetables.length });
 
         addFooters(doc);
         doc.end();

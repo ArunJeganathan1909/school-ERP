@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import Sidebar from '../../components/Sidebar';
 import NotificationBell from '../../components/NotificationBell';
 import {
     fetchTimetables, fetchTimetable, createTimetable,
     updateTimetable, updateSlot, deleteTimetable,
-    clearTimetableError, clearCurrentTimetable, clearLastSync,
+    fetchTimetableByTeacher,
+    clearTimetableError, clearCurrentTimetable, clearLastSync, clearTeacherView,
 } from '../../store/slices/timetableSlice';
 import {
     fetchStructures, createStructure, updateStructure, deleteStructure,
@@ -17,18 +18,44 @@ import api from '../../api/axios';
 import './TimetableManager.css';
 
 const ALL_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const DAY_SHORT = { Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed', Thursday: 'Thu', Friday: 'Fri', Saturday: 'Sat', Sunday: 'Sun' };
 const emptyPeriod = (num) => ({ number: num, startTime: '07:30', endTime: '08:10', label: '', isBreak: false });
+
+// Downloads a PDF blob response from the API and triggers a browser save.
+async function downloadPdf(url, filename) {
+    const response = await api.get(url, { responseType: 'blob' });
+    const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(blobUrl);
+}
 
 export default function TimetableManager() {
     const dispatch = useDispatch();
-    const { list, current, loading, error, lastSync } = useSelector((s) => s.timetables);
+    const { list, current, loading, error, lastSync, teacherView, teacherViewLoading } = useSelector((s) => s.timetables);
     const { list: structures } = useSelector((s) => s.timetableStructures);
     const { list: years }    = useSelector((s) => s.academicYears);
     const { list: grades }   = useSelector((s) => s.grades);
     const { list: sections } = useSelector((s) => s.sections);
 
-    // Main view: 'structures' | 'list' | 'editor'
+    // Main view: 'structures' | 'list' | 'editor' | 'teachers' | 'teacherView'
     const [view, setView] = useState('structures');
+
+    // ── By-teacher admin views ────────────────────────────────────────────────
+    const [teachers,        setTeachers]        = useState([]);
+    const [teachersLoading, setTeachersLoading] = useState(false);
+    const [teacherSearch,   setTeacherSearch]   = useState('');
+
+    // PDF download busy-state — keyed so multiple buttons don't fight over one flag
+    const [downloadingId, setDownloadingId] = useState(null); // section timetable id or teacher id currently downloading
+    const [downloadingAllSections, setDownloadingAllSections] = useState(false);
+    const [downloadingAllTeachers, setDownloadingAllTeachers] = useState(false);
+    const [downloadError, setDownloadError] = useState('');
 
     // Filters
     const [filterYear,    setFilterYear]    = useState('');
@@ -268,6 +295,129 @@ export default function TimetableManager() {
         if (current?._id === deleteTarget._id) backToList();
     };
 
+    // ── By-teacher helpers ────────────────────────────────────────────────────
+
+    const openTeachersView = async () => {
+        dispatch(clearTimetableError());
+        setView('teachers');
+        if (teachers.length === 0) {
+            setTeachersLoading(true);
+            try {
+                const { data } = await api.get('/users', { params: { role: 'teacher', limit: 200 } });
+                setTeachers(data.users || []);
+            } catch {
+                setTeachers([]);
+            }
+            setTeachersLoading(false);
+        }
+    };
+
+    const openTeacherSchedule = async (teacherId) => {
+        dispatch(clearTimetableError());
+        setView('teacherView');
+        await dispatch(fetchTimetableByTeacher(teacherId));
+    };
+
+    const backFromTeacherSchedule = () => {
+        dispatch(clearTeacherView());
+        dispatch(clearTimetableError());
+        setView('teachers');
+    };
+
+    // Merges a teacher's per-section timetables into one weekly grid —
+    // mirrors the same merge the teacher sees on their own schedule page.
+    const mergedTeacherGrid = useMemo(() => {
+        const timetables = teacherView?.timetables;
+        if (!timetables?.length) return null;
+
+        const workingDaysSet  = new Set();
+        const periodsByNumber = new Map();
+        const cellMap         = new Map();
+
+        timetables.forEach((tt) => {
+            tt.workingDays?.forEach((d) => workingDaysSet.add(d));
+            tt.periods?.forEach((p) => { if (!periodsByNumber.has(p.number)) periodsByNumber.set(p.number, p); });
+
+            const myIds = tt.myTeacherSubjectIds || [];
+            const sectionLabel = tt.section ? `${tt.grade?.gradeNumber || ''}${tt.section?.name}` : tt.term;
+
+            tt.slots?.forEach((slot) => {
+                if (!slot.isMyClass) return;
+                const mySubjects = (slot.subjects || []).filter((s) => myIds.includes(String(s._id)));
+                if (mySubjects.length === 0) return;
+
+                const key = `${slot.day}|${slot.period}`;
+                const entries = cellMap.get(key) || [];
+                mySubjects.forEach((subject) => entries.push({ subject, sectionLabel, bucket: slot.bucket }));
+                cellMap.set(key, entries);
+            });
+        });
+
+        return {
+            workingDays: DAY_ORDER.filter((d) => workingDaysSet.has(d)),
+            periods:     [...periodsByNumber.values()].sort((a, b) => a.number - b.number),
+            cellMap,
+        };
+    }, [teacherView]);
+
+    const getMergedEntries = (day, periodNumber) => mergedTeacherGrid?.cellMap.get(`${day}|${periodNumber}`) || [];
+
+    // ── PDF download helpers ──────────────────────────────────────────────────
+
+    const handleDownloadSectionPdf = async (tt) => {
+        setDownloadError('');
+        setDownloadingId(tt._id);
+        try {
+            const label = `Grade${tt.grade?.gradeNumber || ''}${tt.section?.name || ''}`.replace(/\s+/g, '');
+            await downloadPdf(`/timetables/${tt._id}/pdf`, `timetable-${label}.pdf`);
+        } catch {
+            setDownloadError('Failed to download PDF');
+        }
+        setDownloadingId(null);
+    };
+
+    const handleDownloadAllSectionsPdf = async () => {
+        setDownloadError('');
+        setDownloadingAllSections(true);
+        try {
+            const params = new URLSearchParams();
+            if (filterYear)    params.set('academicYear', filterYear);
+            if (filterGrade)   params.set('grade', filterGrade);
+            if (filterSemester) params.set('semester', filterSemester);
+            const qs = params.toString();
+            await downloadPdf(`/timetables/download-all/sections${qs ? `?${qs}` : ''}`, 'all-section-timetables.pdf');
+        } catch {
+            setDownloadError('Failed to download combined PDF');
+        }
+        setDownloadingAllSections(false);
+    };
+
+    const handleDownloadTeacherPdf = async (teacher) => {
+        setDownloadError('');
+        setDownloadingId(teacher._id);
+        try {
+            await downloadPdf(`/timetables/teacher/${teacher._id}/pdf`, `teaching-schedule-${(teacher.name || 'teacher').replace(/\s+/g, '')}.pdf`);
+        } catch {
+            setDownloadError('Failed to download PDF — this teacher may have no classes assigned yet');
+        }
+        setDownloadingId(null);
+    };
+
+    const handleDownloadAllTeachersPdf = async () => {
+        setDownloadError('');
+        setDownloadingAllTeachers(true);
+        try {
+            await downloadPdf('/timetables/download-all/teachers', 'all-teacher-schedules.pdf');
+        } catch {
+            setDownloadError('Failed to download combined PDF');
+        }
+        setDownloadingAllTeachers(false);
+    };
+
+    const filteredTeachers = teachers.filter((t) =>
+        !teacherSearch || t.name?.toLowerCase().includes(teacherSearch.toLowerCase()) || t.email?.toLowerCase().includes(teacherSearch.toLowerCase())
+    );
+
     const filteredGrades   = filterYear  ? grades.filter((g) => (g.academicYear?._id || g.academicYear) === filterYear) : grades;
     const filteredSections = filterGrade ? sections.filter((s) => (s.grade?._id || s.grade) === filterGrade) : sections;
     const yearStructures   = filterYear  ? structures.filter((s) => (s.academicYear?._id || s.academicYear) === filterYear) : structures;
@@ -473,6 +623,10 @@ export default function TimetableManager() {
                         </div>
                         <div className="topbar__right">
                             <NotificationBell />
+                            <button className="btn btn-outline btn-sm" onClick={openTeachersView}>👥 By teacher</button>
+                            <button className="btn btn-secondary btn-sm" onClick={handleDownloadAllSectionsPdf} disabled={downloadingAllSections || list.length === 0}>
+                                {downloadingAllSections ? <span className="spinner" /> : '⬇ Download all'}
+                            </button>
                             <button className="btn btn-primary" onClick={openCreateTimetable} disabled={yearStructures.length === 0}>
                                 + New timetable
                             </button>
@@ -480,6 +634,7 @@ export default function TimetableManager() {
                     </div>
 
                     <div className="page-body">
+                        {downloadError && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{downloadError}</div>}
                         {yearStructures.length === 0 && filterYear && (
                             <div className="alert alert-info" style={{ marginBottom: 'var(--space-lg)' }}>
                                 No timetable structure found for this academic year. <button className="btn btn-ghost btn-sm" onClick={() => setView('structures')}>Create one first →</button>
@@ -557,6 +712,9 @@ export default function TimetableManager() {
                                                 <td>
                                                     <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
                                                         <button className="btn btn-primary btn-sm" onClick={() => openEditor(tt._id)}>Edit grid</button>
+                                                        <button className="btn btn-outline btn-sm" onClick={() => handleDownloadSectionPdf(tt)} disabled={downloadingId === tt._id}>
+                                                            {downloadingId === tt._id ? <span className="spinner" /> : '⬇ PDF'}
+                                                        </button>
                                                         <button className="btn btn-outline btn-sm" onClick={() => dispatch(updateTimetable({ id: tt._id, data: { isActive: !tt.isActive } }))}>
                                                             {tt.isActive ? 'Deactivate' : 'Activate'}
                                                         </button>
@@ -681,7 +839,12 @@ export default function TimetableManager() {
                                 Grade {current.grade?.gradeNumber}{current.section?.name} — {current.term}
                             </h1>
                         </div>
-                        <div className="topbar__right"><NotificationBell /></div>
+                        <div className="topbar__right">
+                            <button className="btn btn-secondary btn-sm" onClick={() => handleDownloadSectionPdf(current)} disabled={downloadingId === current._id}>
+                                {downloadingId === current._id ? <span className="spinner" /> : '⬇ Download PDF'}
+                            </button>
+                            <NotificationBell />
+                        </div>
                     </div>
 
                     <div className="page-body">
@@ -705,6 +868,7 @@ export default function TimetableManager() {
                         </div>
 
                         {error && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{error}</div>}
+                        {downloadError && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{downloadError}</div>}
 
                         <div className="card" style={{ overflowX: 'auto', padding: 0 }}>
                             <table className="tt-grid">
@@ -890,6 +1054,182 @@ export default function TimetableManager() {
                         </div>
                     </div>
                 )}
+            </div>
+        );
+    }
+
+    // ── BY-TEACHER LIST VIEW ─────────────────────────────────────────────────
+
+    if (view === 'teachers') {
+        return (
+            <div className="app-shell">
+                <Sidebar />
+                <div className="main-content">
+                    <div className="topbar">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setView('list')}>← Section timetables</button>
+                            <h1 className="topbar__title">Timetables by teacher</h1>
+                        </div>
+                        <div className="topbar__right">
+                            <NotificationBell />
+                            <button className="btn btn-secondary btn-sm" onClick={handleDownloadAllTeachersPdf} disabled={downloadingAllTeachers || teachers.length === 0}>
+                                {downloadingAllTeachers ? <span className="spinner" /> : '⬇ Download all'}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="page-body">
+                        {downloadError && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{downloadError}</div>}
+                        {error && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{error}</div>}
+
+                        <input
+                            className="form-input"
+                            style={{ maxWidth: 320, marginBottom: 'var(--space-lg)' }}
+                            placeholder="Search teachers by name or email…"
+                            value={teacherSearch}
+                            onChange={(e) => setTeacherSearch(e.target.value)}
+                        />
+
+                        {teachersLoading ? (
+                            <div className="empty-state"><div className="spinner" style={{ width: 36, height: 36, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} /></div>
+                        ) : filteredTeachers.length === 0 ? (
+                            <div className="empty-state">
+                                <div className="empty-state__icon">👥</div>
+                                <p>No teachers found.</p>
+                            </div>
+                        ) : (
+                            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                                <table className="data-table">
+                                    <thead>
+                                    <tr>
+                                        <th>Teacher</th>
+                                        <th>Email</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {filteredTeachers.map((t) => (
+                                        <tr key={t._id}>
+                                            <td style={{ fontWeight: 600 }}>{t.name}</td>
+                                            <td style={{ color: 'var(--color-text-secondary)' }}>{t.email}</td>
+                                            <td>
+                                                <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
+                                                    <button className="btn btn-primary btn-sm" onClick={() => openTeacherSchedule(t._id)}>View schedule</button>
+                                                    <button className="btn btn-outline btn-sm" onClick={() => handleDownloadTeacherPdf(t)} disabled={downloadingId === t._id}>
+                                                        {downloadingId === t._id ? <span className="spinner" /> : '⬇ PDF'}
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // ── SINGLE TEACHER SCHEDULE VIEW ─────────────────────────────────────────
+
+    if (view === 'teacherView') {
+        const teacher = teacherView?.teacher;
+        const hasSchedule = mergedTeacherGrid && mergedTeacherGrid.periods.length > 0;
+
+        return (
+            <div className="app-shell">
+                <Sidebar />
+                <div className="main-content">
+                    <div className="topbar">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+                            <button className="btn btn-ghost btn-sm" onClick={backFromTeacherSchedule}>← Teachers</button>
+                            <h1 className="topbar__title">{teacher?.name || 'Teacher schedule'}</h1>
+                        </div>
+                        <div className="topbar__right">
+                            <NotificationBell />
+                            {teacher && (
+                                <button className="btn btn-secondary btn-sm" onClick={() => handleDownloadTeacherPdf(teacher)} disabled={downloadingId === teacher._id}>
+                                    {downloadingId === teacher._id ? <span className="spinner" /> : '⬇ Download PDF'}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="page-body">
+                        {downloadError && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{downloadError}</div>}
+                        {error && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{error}</div>}
+
+                        {teacherViewLoading ? (
+                            <div className="empty-state"><div className="spinner" style={{ width: 36, height: 36, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} /></div>
+                        ) : !hasSchedule ? (
+                            <div className="empty-state">
+                                <div className="empty-state__icon">🗓</div>
+                                <p>This teacher has no classes assigned in any active timetable yet.</p>
+                            </div>
+                        ) : (
+                            <>
+                                <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: 'var(--space-lg)' }}>
+                                    {mergedTeacherGrid.workingDays.length} days · {mergedTeacherGrid.periods.length} periods · across {teacherView.timetables.length} section{teacherView.timetables.length !== 1 ? 's' : ''}
+                                </p>
+                                <div className="card" style={{ overflowX: 'auto', padding: 0 }}>
+                                    <table className="tt-grid">
+                                        <thead>
+                                        <tr>
+                                            <th className="tt-grid__period-col">Period</th>
+                                            {mergedTeacherGrid.workingDays.map((day) => (
+                                                <th key={day} className="tt-grid__day-col">
+                                                    <div>{DAY_SHORT[day] || day}</div>
+                                                    <div style={{ fontSize: '0.7rem', fontWeight: 400 }}>{day}</div>
+                                                </th>
+                                            ))}
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        {mergedTeacherGrid.periods.map((period) => (
+                                            <tr key={period.number}>
+                                                <td className="tt-grid__period-cell">
+                                                    <div style={{ fontWeight: 600, fontSize: '0.8125rem' }}>
+                                                        {period.isBreak ? (period.label || 'Break') : `P${period.number}`}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                                                        {period.startTime}–{period.endTime}
+                                                    </div>
+                                                </td>
+                                                {mergedTeacherGrid.workingDays.map((day) => {
+                                                    if (period.isBreak) {
+                                                        return <td key={day} className="tt-grid__break-cell">{period.label || 'Break'}</td>;
+                                                    }
+                                                    const entries = getMergedEntries(day, period.number);
+                                                    return (
+                                                        <td key={day} className={`tt-grid__slot-cell ${entries.length ? 'tt-grid__slot-cell--filled' : 'tt-grid__slot-cell--empty'}`}>
+                                                            {entries.length ? (
+                                                                entries.map((e, i) => (
+                                                                    <div key={i} style={{ marginBottom: 4 }}>
+                                                                        <div className="tt-slot-name">{e.subject.name}</div>
+                                                                        <div className="tt-slot-code">{e.subject.code}</div>
+                                                                        <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                                                                            Grade {e.sectionLabel}
+                                                                            {e.bucket && <span> · 🪣 {e.bucket}</span>}
+                                                                        </div>
+                                                                    </div>
+                                                                ))
+                                                            ) : (
+                                                                <span className="tt-slot-free">—</span>
+                                                            )}
+                                                        </td>
+                                                    );
+                                                })}
+                                            </tr>
+                                        ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
             </div>
         );
     }
