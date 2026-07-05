@@ -15,6 +15,7 @@ const notificationSchema = new mongoose.Schema(
                 'quiz_available',
                 'grade_posted',
                 'fee_reminder',
+                'fee_paid',
                 'attendance_marked',
                 'announcement',
                 'enrollment',

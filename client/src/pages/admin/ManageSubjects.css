@@ -1,13 +1,21 @@
-/* ── Stats strip ── */
+/* ==========================================================================
+   ManageSubjects — page-specific styles
+   Uses tokens from variables.css only. No changes to global/layout/components.
+   ========================================================================== */
+
+/* ── Stats strip (top of page) ──
+   NOTE: JSX renders .subject-stats-strip / __item / __val / __label.
+   These were previously undefined — the old .subject-stats rules below
+   never actually matched anything and have been replaced. */
 .subject-stats-strip {
     display: flex;
-    align-items: center;
     gap: var(--space-xl);
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     padding: var(--space-md) var(--space-xl);
     margin-bottom: var(--space-lg);
+    box-shadow: var(--shadow-sm);
     flex-wrap: wrap;
 }
 
@@ -16,6 +24,7 @@
     flex-direction: column;
     align-items: center;
     gap: 2px;
+    min-width: 72px;
 }
 
 .subject-stats-strip__val {
@@ -30,200 +39,238 @@
     color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+}
+
+/* ── Segmented tab control ──
+   Used for scope-mode filter, mandatory/elective filter, and the
+   scope + type toggles inside the create/edit modal. Previously unstyled. */
+.course-status-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: 8px var(--space-md);
+    border-radius: var(--radius-md);
+    border: 1.5px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
     white-space: nowrap;
 }
 
-/* ── Filters ── */
+.course-status-tab:hover:not(:disabled):not(.active) {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    background: var(--color-primary-light);
+}
+
+.course-status-tab.active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+    box-shadow: var(--shadow-sm);
+}
+
+.course-status-tab:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ── Data table (subject list) ──
+   Previously undefined — SubjectTable rendered as an unstyled native table. */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.data-table thead tr {
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.data-table th {
+    text-align: left;
+    padding: var(--space-sm) var(--space-lg);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+}
+
+.data-table td {
+    padding: var(--space-md) var(--space-lg);
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+}
+
+.data-table tbody tr {
+    transition: background var(--transition-fast);
+}
+
+.data-table tbody tr:hover {
+    background: var(--color-bg);
+}
+
+.data-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* ── Empty state ──
+   Previously undefined — loading/empty branches rendered as bare unstyled divs. */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: var(--space-sm);
+    padding: var(--space-2xl) var(--space-lg);
+    background: var(--color-surface);
+    border: 1.5px dashed var(--color-border);
+    border-radius: var(--radius-lg);
+    color: var(--color-text-secondary);
+    font-size: 0.9375rem;
+}
+
+.empty-state__icon {
+    font-size: 2.25rem;
+    line-height: 1;
+    margin-bottom: var(--space-xs);
+    opacity: 0.85;
+}
+
+/* ── Filters row ── */
 .subject-filters {
     display: flex;
-    align-items: center;
     gap: var(--space-sm);
     margin-bottom: var(--space-lg);
     flex-wrap: wrap;
+    align-items: center;
 }
 
-.subject-filters__select {
-    width: auto;
-    min-width: 180px;
-}
+/* ── Group headers (mandatory / bucket sections) ── */
+.subject-group { margin-bottom: var(--space-xl); }
 
-/* ── Grid of cards ── */
-.subject-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: var(--space-lg);
-}
-
-/* ── Subject card ── */
-.subject-card {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-    transition: box-shadow var(--transition-base), transform var(--transition-base);
-}
-
-.subject-card:hover {
-    box-shadow: var(--shadow-md);
-    transform: translateY(-2px);
-}
-
-.subject-card__top {
+.subject-group__header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-}
-
-.subject-card__code {
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: var(--color-primary);
-    background: var(--color-primary-light);
-    padding: 2px 10px;
-    border-radius: var(--radius-full);
-    letter-spacing: 0.04em;
-}
-
-.subject-card__semester {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #EA580C;
-    background: #FFF7ED;
-    padding: 2px 8px;
-    border-radius: var(--radius-full);
-}
-
-.subject-card__name {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--color-text-primary);
-    line-height: 1.3;
-}
-
-.subject-card__course {
-    font-size: 0.8125rem;
-    color: var(--color-text-secondary);
-}
-
-.subject-card__desc {
-    font-size: 0.8125rem;
-    color: var(--color-text-muted);
-    line-height: 1.5;
-    flex: 1;
-}
-
-.subject-card__meta {
-    display: flex;
-    gap: var(--space-md);
-    font-size: 0.8125rem;
-    color: var(--color-text-secondary);
-    padding-top: var(--space-xs);
-    border-top: 1px solid var(--color-border);
-}
-
-/* ── Schedule pills on card ── */
-.subject-card__schedule {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-xs);
-}
-
-.subject-schedule-pill {
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 3px 8px;
-    border-radius: var(--radius-full);
-    white-space: nowrap;
-}
-
-/* ── Card actions ── */
-.subject-card__actions {
-    display: flex;
-    gap: var(--space-xs);
-    padding-top: var(--space-sm);
-    border-top: 1px solid var(--color-border);
-    margin-top: auto;
-}
-
-/* ── Modal: schedule section ── */
-.subject-schedule-section {
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    padding: var(--space-md);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-}
-
-.subject-schedule-section__header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.subject-schedule-slots {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-}
-
-.subject-schedule-slot {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    flex-wrap: wrap;
-}
-
-.subject-schedule-slot .form-input {
-    flex: 1;
-    min-width: 80px;
-}
-
-/* ── Modal: elective toggle ── */
-.subject-modal-toggle {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    cursor: pointer;
-    font-size: 0.875rem;
-    color: var(--color-text-secondary);
-    padding: var(--space-xs) 0;
-}
-
-/* ── View modal: hero ── */
-.subject-view-hero {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-md);
     margin-bottom: var(--space-md);
 }
 
-.subject-view-hero__icon {
-    width: 52px;
-    height: 52px;
+.subject-group__title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+}
+
+.subject-group__icon {
+    width: 32px;
+    height: 32px;
     border-radius: var(--radius-md);
-    background: var(--color-primary-light);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.5rem;
-    flex-shrink: 0;
+    font-size: 1rem;
 }
 
-/* ── View modal: schedule slot ── */
-.subject-view-slot {
+.subject-group__count {
+    font-size: 0.875rem;
+    font-weight: 700;
+}
+
+/* ── Subject type toggle (Mandatory vs Bucket cards, if used) ── */
+.subject-type-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-sm);
+}
+
+.subject-type-option {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-md);
+    border: 2px solid var(--color-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.subject-type-option:hover {
+    border-color: var(--color-primary);
+}
+
+.subject-type-option.active {
+    border-color: var(--color-primary);
+    background: var(--color-primary-light);
+}
+
+.subject-type-option input { display: none; }
+
+.subject-type-option span {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.subject-type-option small {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+}
+
+/* ── Bucket grid ── */
+.bucket-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-sm);
+}
+
+.bucket-option {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
+    gap: var(--space-sm);
     padding: var(--space-sm) var(--space-md);
+    border: 2px solid var(--color-border);
     border-radius: var(--radius-md);
-    flex-wrap: wrap;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
 }
 
-/* ── Responsive ── */
-@media (max-width: 768px) {
-    .subject-filters { flex-direction: column; align-items: stretch; }
-    .subject-filters__select { width: 100%; }
-    .subject-grid { grid-template-columns: 1fr; }
-    .subject-schedule-slot { flex-direction: column; }
-    .subject-schedule-slot .form-input { width: 100%; }
+.bucket-option:hover {
+    border-color: var(--color-primary);
+    color: var(--color-text-primary);
+}
+
+.bucket-option.active {
+    font-weight: 600;
+    border-width: 2px;
+    border-color: var(--color-primary);
+    background: var(--color-primary-light);
+    color: var(--color-primary);
+}
+
+.bucket-option input { display: none; }
+
+.bucket-option__icon { font-size: 1.1rem; }
+
+.bucket-option__label {
+    font-size: 0.875rem;
+    color: inherit;
+}
+
+@media (max-width: 600px) {
+    .bucket-grid { grid-template-columns: 1fr; }
+    .subject-type-toggle { grid-template-columns: 1fr; }
+    .subject-stats-strip { gap: var(--space-lg); padding: var(--space-md); }
+    .data-table th, .data-table td { padding: var(--space-sm) var(--space-md); }
 }

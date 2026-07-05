@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { fetchLessons, fetchLesson } from '../../store/slices/lessonSlice';
-import { fetchMyEnrollments } from '../../store/slices/enrollmentSlice';
+import { fetchMySubjects } from '../../store/slices/subjectEnrollmentSlice';
 import Sidebar from '../../components/Sidebar';
 import api from '../../api/axios';
 import './LessonList.css';
@@ -16,7 +16,6 @@ const TYPE_META = {
     slide: { icon: '📊', color: '#D97706', bg: '#FFFBEB', label: 'Slide' },
 };
 
-/* Banner colours + emojis that cycle across cards */
 const CARD_THEMES = [
     { bg: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)', emoji: '📘' },
     { bg: 'linear-gradient(135deg, #059669 0%, #0891B2 100%)', emoji: '📗' },
@@ -136,28 +135,28 @@ export default function LessonList() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
 
-    const courseId = searchParams.get('course');
-    const lessonId = searchParams.get('lesson');
+    const subjectId = searchParams.get('subject');
+    const lessonId  = searchParams.get('lesson');
 
     const { list: lessons, current: activeLesson, loading: lessonsLoading } = useSelector((s) => s.lessons);
-    const { list: enrollments, loading: enrollmentsLoading }                = useSelector((s) => s.enrollments);
+    const { myEnrollments, loading: enrollmentsLoading } = useSelector((s) => s.subjectEnrollments);
 
     const [lessonCounts, setLessonCounts]   = useState({});
     const [lessonLoading, setLessonLoading] = useState(false);
 
-    /* 1. Load enrollments */
-    useEffect(() => { dispatch(fetchMyEnrollments()); }, [dispatch]);
+    /* 1. Load the student's active subject enrollments (mandatory + bucket) */
+    useEffect(() => { dispatch(fetchMySubjects()); }, [dispatch]);
 
-    /* 2. Fetch lesson count per enrolled course */
+    /* 2. Fetch lesson count per enrolled subject */
     useEffect(() => {
-        const ids = enrollments
-            .filter((e) => e.status === 'active' && e.course?._id)
-            .map((e) => e.course._id);
+        const ids = myEnrollments
+            .filter((e) => e.status === 'active' && e.subject?._id)
+            .map((e) => e.subject._id);
         if (!ids.length) return;
 
         Promise.all(
             ids.map((id) =>
-                api.get(`/lessons?course=${id}`)
+                api.get(`/lessons?subject=${id}`)
                     .then(({ data }) => ({ id, count: (data.lessons || []).length }))
                     .catch(() => ({ id, count: 0 }))
             )
@@ -166,20 +165,20 @@ export default function LessonList() {
             res.forEach(({ id, count }) => { map[id] = count; });
             setLessonCounts(map);
         });
-    }, [enrollments]);
+    }, [myEnrollments]);
 
-    /* 3. Load lessons when course selected */
+    /* 3. Load lessons when subject selected */
     useEffect(() => {
-        if (!courseId) return;
-        dispatch(fetchLessons({ course: courseId }));
-    }, [dispatch, courseId]);
+        if (!subjectId) return;
+        dispatch(fetchLessons({ subject: subjectId }));
+    }, [dispatch, subjectId]);
 
     /* 4. Auto-select first lesson */
     useEffect(() => {
-        if (!lessonId && lessons.length > 0 && courseId) {
-            setSearchParams({ course: courseId, lesson: lessons[0]._id }, { replace: true });
+        if (!lessonId && lessons.length > 0 && subjectId) {
+            setSearchParams({ subject: subjectId, lesson: lessons[0]._id }, { replace: true });
         }
-    }, [lessons, lessonId, courseId]);
+    }, [lessons, lessonId, subjectId]);
 
     /* 5. Load lesson detail */
     useEffect(() => {
@@ -188,19 +187,19 @@ export default function LessonList() {
         dispatch(fetchLesson(lessonId)).finally(() => setLessonLoading(false));
     }, [dispatch, lessonId]);
 
-    const selectCourse = (id) => setSearchParams({ course: id });
-    const selectLesson = (id) => setSearchParams({ course: courseId, lesson: id });
-    const goBack       = ()   => setSearchParams({});
+    const selectSubject = (id) => setSearchParams({ subject: id });
+    const selectLesson  = (id) => setSearchParams({ subject: subjectId, lesson: id });
+    const goBack        = ()   => setSearchParams({});
 
-    const enrolledCourses = enrollments
-        .filter((e) => e.status === 'active' && e.course?._id)
-        .map((e) => e.course);
+    const enrolledSubjects = myEnrollments
+        .filter((e) => e.status === 'active' && e.subject?._id)
+        .map((e) => e.subject);
 
-    const selectedCourse = enrolledCourses.find((c) => c._id === courseId);
-    const totalAvailable = Object.values(lessonCounts).reduce((a, b) => a + b, 0);
+    const selectedSubject = enrolledSubjects.find((s) => s._id === subjectId);
+    const totalAvailable  = Object.values(lessonCounts).reduce((a, b) => a + b, 0);
 
-    /* ══ VIEW 1 — Course picker cards ══ */
-    if (!courseId) {
+    /* ══ VIEW 1 — Subject picker cards ══ */
+    if (!subjectId) {
         return (
             <div className="app-shell">
                 <Sidebar />
@@ -208,38 +207,38 @@ export default function LessonList() {
                     <div className="topbar">
                         <h1 className="topbar__title">My Lessons</h1>
                         <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
-                            {totalAvailable} lesson{totalAvailable !== 1 ? 's' : ''} available
-                        </span>
+              {totalAvailable} lesson{totalAvailable !== 1 ? 's' : ''} available
+            </span>
                     </div>
 
                     <div className="page-body">
                         <div className="ll-page-header">
-                            <h2>Choose a course to study</h2>
-                            <p>Select any of your enrolled courses below to browse its lessons.</p>
+                            <h2>Choose a subject to study</h2>
+                            <p>Select any of your enrolled subjects below to browse its lessons.</p>
                         </div>
 
                         {enrollmentsLoading ? (
                             <div className="empty-state">
                                 <div className="spinner" style={{ width: 32, height: 32, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} />
                             </div>
-                        ) : enrolledCourses.length === 0 ? (
+                        ) : enrolledSubjects.length === 0 ? (
                             <div className="empty-state">
                                 <div className="empty-state__icon">📚</div>
-                                <p>You are not enrolled in any active courses yet.</p>
-                                <button className="btn btn-primary" style={{ marginTop: 'var(--space-md)' }} onClick={() => navigate('/courses')}>
-                                    Browse courses
+                                <p>You are not enrolled in any subjects yet.</p>
+                                <button className="btn btn-primary" style={{ marginTop: 'var(--space-md)' }} onClick={() => navigate('/student/subjects')}>
+                                    View my subjects
                                 </button>
                             </div>
                         ) : (
                             <div className="ll-course-grid">
-                                {enrolledCourses.map((course, i) => {
+                                {enrolledSubjects.map((subject, i) => {
                                     const theme = CARD_THEMES[i % CARD_THEMES.length];
-                                    const count = lessonCounts[course._id];
+                                    const count = lessonCounts[subject._id];
                                     return (
                                         <button
-                                            key={course._id}
+                                            key={subject._id}
                                             className="ll-course-card"
-                                            onClick={() => selectCourse(course._id)}
+                                            onClick={() => selectSubject(subject._id)}
                                         >
                                             {/* Coloured banner */}
                                             <div className="ll-course-card__banner" style={{ background: theme.bg }}>
@@ -248,9 +247,9 @@ export default function LessonList() {
 
                                             {/* Text body */}
                                             <div className="ll-course-card__body">
-                                                <h3 className="ll-course-card__title">{course.title}</h3>
+                                                <h3 className="ll-course-card__title">{subject.name}</h3>
                                                 <p className="ll-course-card__sub">
-                                                    {course.code}{course.department ? ` · ${course.department}` : ''}
+                                                    {subject.code}{subject.teacher?.name ? ` · ${subject.teacher.name}` : ''}
                                                 </p>
                                             </div>
 
@@ -261,8 +260,8 @@ export default function LessonList() {
                                                         <>
                                                             <span className="ll-course-card__count">{count}</span>
                                                             <span className="ll-course-card__count-label">
-                                                                {count === 1 ? 'lesson' : 'lessons'}
-                                                            </span>
+                                {count === 1 ? 'lesson' : 'lessons'}
+                              </span>
                                                         </>
                                                     ) : (
                                                         <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} />
@@ -291,18 +290,18 @@ export default function LessonList() {
 
                 <div className="topbar">
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
-                        <button className="btn btn-ghost btn-sm" onClick={goBack}>← Courses</button>
+                        <button className="btn btn-ghost btn-sm" onClick={goBack}>← Subjects</button>
                         <div>
-                            <h1 className="topbar__title" style={{ lineHeight: 1.2 }}>{selectedCourse?.title || 'Lessons'}</h1>
-                            {selectedCourse?.code && (
-                                <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 1 }}>{selectedCourse.code}</p>
+                            <h1 className="topbar__title" style={{ lineHeight: 1.2 }}>{selectedSubject?.name || 'Lessons'}</h1>
+                            {selectedSubject?.code && (
+                                <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 1 }}>{selectedSubject.code}</p>
                             )}
                         </div>
                     </div>
                     {tm && (
                         <span className="ll-lesson-type-badge" style={{ background: tm.bg, color: tm.color }}>
-                            {tm.icon} {tm.label}
-                        </span>
+              {tm.icon} {tm.label}
+            </span>
                     )}
                 </div>
 
@@ -310,7 +309,7 @@ export default function LessonList() {
                     {/* ── Left: lesson list ── */}
                     <aside className="ll-sidebar">
                         <div className="ll-sidebar__header">
-                            <div className="ll-sidebar__course-name">{selectedCourse?.code || 'Lessons'}</div>
+                            <div className="ll-sidebar__course-name">{selectedSubject?.code || 'Lessons'}</div>
                             <div className="ll-sidebar__count">
                                 {lessonsLoading ? 'Loading…' : `${lessons.length} lesson${lessons.length !== 1 ? 's' : ''}`}
                             </div>
@@ -364,16 +363,16 @@ export default function LessonList() {
                             <>
                                 <div className="ll-lesson-header">
                                     <div className="ll-lesson-breadcrumb">
-                                        <span>{selectedCourse?.title}</span>
+                                        <span>{selectedSubject?.name}</span>
                                         <span>›</span>
-                                        <span>{activeLesson.subject?.name || 'General'}</span>
+                                        <span>{activeLesson.section?.name ? `Section ${activeLesson.section.name}` : 'All sections'}</span>
                                     </div>
                                     <h2 className="ll-lesson-title">{activeLesson.title}</h2>
                                     <div className="ll-lesson-meta">
                                         {tm && (
                                             <span className="ll-lesson-type-badge" style={{ background: tm.bg, color: tm.color }}>
-                                                {tm.icon} {tm.label}
-                                            </span>
+                        {tm.icon} {tm.label}
+                      </span>
                                         )}
                                         {activeLesson.subject?.name && (
                                             <div className="ll-lesson-meta-item"><span>📖</span><span>{activeLesson.subject.name}</span></div>
@@ -406,8 +405,8 @@ export default function LessonList() {
                                                 )}
                                             </div>
                                             <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                                                {idx + 1} / {lessons.length}
-                                            </span>
+                        {idx + 1} / {lessons.length}
+                      </span>
                                             <div>
                                                 {next && (
                                                     <button className="btn btn-primary btn-sm" onClick={() => selectLesson(next._id)}>

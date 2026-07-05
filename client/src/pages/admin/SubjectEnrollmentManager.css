@@ -1,0 +1,211 @@
+.sem-steps {
+    display: flex;
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.sem-step {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.sem-step__num {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--color-primary-light);
+    color: var(--color-primary);
+    font-size: 0.75rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.sem-step .form-input {
+    width: 220px;
+}
+
+.sem-layout {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: var(--space-lg);
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .sem-layout { grid-template-columns: 1fr; }
+}
+
+/* Student list */
+.sem-student-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 520px;
+    overflow-y: auto;
+}
+
+.sem-student-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-sm);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+.sem-student-row:hover {
+    background: var(--color-bg);
+}
+
+.sem-student-row--active {
+    background: var(--color-primary-light);
+}
+
+.sem-student-row__avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--color-primary-light);
+    color: var(--color-primary);
+    font-weight: 700;
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.sem-student-row--active .sem-student-row__avatar {
+    background: var(--color-primary);
+    color: #fff;
+}
+
+.sem-student-row__info {
+    flex: 1;
+    min-width: 0;
+}
+
+.sem-student-row__name {
+    font-size: 0.9375rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sem-student-row__email {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+}
+
+.sem-student-row__roll {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-primary);
+    flex-shrink: 0;
+}
+
+/* Bucket cards */
+.sem-bucket-card {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-md);
+    transition: border-color var(--transition-fast);
+}
+
+.sem-bucket-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-sm);
+}
+
+.sem-bucket-card__name {
+    font-weight: 700;
+    font-size: 0.9375rem;
+    color: var(--color-primary);
+}
+
+.sem-bucket-card__options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.sem-bucket-option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-md);
+    border: 1.5px solid var(--color-border);
+    background: var(--color-surface);
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all var(--transition-fast);
+    text-align: left;
+}
+
+.sem-bucket-option:hover:not(:disabled) {
+    border-color: var(--color-primary);
+    background: var(--color-primary-light);
+}
+
+.sem-bucket-option:disabled {
+    cursor: default;
+}
+
+.sem-bucket-option--picked {
+    border-color: var(--color-success);
+    background: var(--color-success-bg);
+    color: var(--color-success);
+    font-weight: 600;
+}
+
+.sem-bucket-option__code {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    margin-left: auto;
+}
+
+.sem-bucket-option--picked .sem-bucket-option__code {
+    color: var(--color-success);
+    opacity: 0.7;
+}
+
+.sem-bucket-option__check {
+    margin-left: var(--space-sm);
+    font-weight: 700;
+}
+
+/* ── Empty state ──
+   Previously undefined — the "select a section", "no students", and
+   "select a student" branches rendered as bare unstyled divs. */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: var(--space-sm);
+    padding: var(--space-2xl) var(--space-lg);
+    background: var(--color-surface);
+    border: 1.5px dashed var(--color-border);
+    border-radius: var(--radius-lg);
+    color: var(--color-text-secondary);
+    font-size: 0.9375rem;
+}
+
+.empty-state__icon {
+    font-size: 2.25rem;
+    line-height: 1;
+    margin-bottom: var(--space-xs);
+    opacity: 0.85;
+}

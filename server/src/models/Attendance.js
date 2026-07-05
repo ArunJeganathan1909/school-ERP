@@ -12,9 +12,9 @@ const attendanceSchema = new mongoose.Schema(
             ref: 'Subject',
             required: true
         },
-        course: {
+        section: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'Course',
+            ref: 'Section',
             required: true
         },
         markedBy: {
@@ -46,7 +46,7 @@ const attendanceSchema = new mongoose.Schema(
 // One record per student per subject per date
 attendanceSchema.index({ student: 1, subject: 1, date: 1 }, { unique: true });
 attendanceSchema.index({ subject: 1, date: 1 });
-attendanceSchema.index({ course: 1, date: 1 });
-attendanceSchema.index({ student: 1, course: 1 });
+attendanceSchema.index({ section: 1, date: 1 });
+attendanceSchema.index({ student: 1, section: 1 });
 
 module.exports = mongoose.model('Attendance', attendanceSchema);

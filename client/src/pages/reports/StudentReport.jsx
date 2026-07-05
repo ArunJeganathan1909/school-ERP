@@ -54,7 +54,7 @@ export default function StudentReport() {
                     {/* Summary cards */}
                     <div className="stats-grid" style={{ marginBottom: 'var(--space-xl)' }}>
                         {[
-                            { label: 'Courses enrolled', value: report.enrollments.length, icon: '📚', color: '#4F46E5', bg: '#EEF2FF' },
+                            { label: 'Subjects enrolled', value: report.enrollments.length, icon: '📚', color: '#4F46E5', bg: '#EEF2FF' },
                             { label: 'Classes attended', value: `${report.presentClasses} / ${report.totalClasses}`, icon: '✅', color: '#059669', bg: '#ECFDF5' },
                             { label: 'Avg assignment score', value: report.avgMarks > 0 ? `${report.avgMarks}%` : '—', icon: '📝', color: '#7C3AED', bg: '#F5F3FF' },
                             { label: 'Avg quiz score', value: report.avgQuizScore > 0 ? `${report.avgQuizScore}%` : '—', icon: '🎯', color: '#D97706', bg: '#FFFBEB' },
@@ -153,18 +153,18 @@ export default function StudentReport() {
                     {/* Enrollment table */}
                     {report.enrollments.length > 0 && (
                         <>
-                            <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: 'var(--space-xl) 0 var(--space-md)' }}>Enrolled courses</h2>
+                            <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: 'var(--space-xl) 0 var(--space-md)' }}>Enrolled subjects</h2>
                             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                                 <table className="data-table">
                                     <thead>
-                                    <tr><th>Course</th><th>Code</th><th>Department</th><th>Status</th></tr>
+                                    <tr><th>Subject</th><th>Code</th><th>Credits</th><th>Status</th></tr>
                                     </thead>
                                     <tbody>
                                     {report.enrollments.map((e) => (
                                         <tr key={e._id}>
-                                            <td style={{ fontWeight: 500 }}>{e.course?.title}</td>
-                                            <td><span style={{ background: '#EEF2FF', color: '#4F46E5', fontWeight: 700, fontSize: '0.75rem', padding: '2px 8px', borderRadius: 'var(--radius-full)' }}>{e.course?.code}</span></td>
-                                            <td style={{ color: 'var(--color-text-secondary)' }}>{e.course?.department}</td>
+                                            <td style={{ fontWeight: 500 }}>{e.subject?.name}</td>
+                                            <td><span style={{ background: '#EEF2FF', color: '#4F46E5', fontWeight: 700, fontSize: '0.75rem', padding: '2px 8px', borderRadius: 'var(--radius-full)' }}>{e.subject?.code}</span></td>
+                                            <td style={{ color: 'var(--color-text-secondary)' }}>{e.subject?.credits}</td>
                                             <td><span className={`badge badge-${e.status === 'active' ? 'success' : 'error'}`}>{e.status}</span></td>
                                         </tr>
                                     ))}

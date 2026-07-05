@@ -8,9 +8,9 @@ export const fetchAdminDashboard = createAsyncThunk('reports/adminDashboard', as
     } catch (err) { return rejectWithValue(err.response?.data?.message); }
 });
 
-export const fetchCourseAnalytics = createAsyncThunk('reports/courseAnalytics', async (_, { rejectWithValue }) => {
+export const fetchSubjectAnalytics = createAsyncThunk('reports/subjectAnalytics', async (_, { rejectWithValue }) => {
     try {
-        const { data } = await api.get('/reports/admin/courses');
+        const { data } = await api.get('/reports/admin/subjects');
         return data.analytics;
     } catch (err) { return rejectWithValue(err.response?.data?.message); }
 });
@@ -34,7 +34,7 @@ const reportSlice = createSlice({
     initialState: {
         adminStats: null,
         enrollmentTrend: [],
-        courseAnalytics: [],
+        subjectAnalytics: [],
         studentReport: null,
         teacherReport: null,
         loading: false,
@@ -52,9 +52,9 @@ const reportSlice = createSlice({
                 s.enrollmentTrend = a.payload.enrollmentTrend;
             })
             .addCase(fetchAdminDashboard.rejected, rejected)
-            .addCase(fetchCourseAnalytics.pending, pending)
-            .addCase(fetchCourseAnalytics.fulfilled, (s, a) => { s.loading = false; s.courseAnalytics = a.payload; })
-            .addCase(fetchCourseAnalytics.rejected, rejected)
+            .addCase(fetchSubjectAnalytics.pending, pending)
+            .addCase(fetchSubjectAnalytics.fulfilled, (s, a) => { s.loading = false; s.subjectAnalytics = a.payload; })
+            .addCase(fetchSubjectAnalytics.rejected, rejected)
             .addCase(fetchStudentReport.pending, pending)
             .addCase(fetchStudentReport.fulfilled, (s, a) => { s.loading = false; s.studentReport = a.payload; })
             .addCase(fetchStudentReport.rejected, rejected)

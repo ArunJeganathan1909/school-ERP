@@ -3,60 +3,64 @@ const mongoose = require('mongoose');
 const lessonSchema = new mongoose.Schema(
     {
         title: {
-            type: String,
+            type:     String,
             required: true,
-            trim: true,
+            trim:     true,
         },
         subject: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Subject',
-            required: true,
+            type:     mongoose.Schema.Types.ObjectId,
+            ref:      'Subject',
+            required: [true, 'Subject is required'],
         },
-        course: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Course',
-            required: true,
+        // Which section this lesson is for (optional — a lesson can be section-specific
+        // or shared across sections teaching the same subject)
+        section: {
+            type:    mongoose.Schema.Types.ObjectId,
+            ref:     'Section',
+            default: null,
         },
         teacher: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
+            type:     mongoose.Schema.Types.ObjectId,
+            ref:      'User',
             required: true,
         },
         type: {
-            type: String,
-            enum: ['text', 'video', 'pdf', 'link', 'slide'],
+            type:    String,
+            enum:    ['text', 'video', 'pdf', 'link', 'slide'],
             default: 'text',
         },
         content: {
-            type: String,
+            type:    String,
             default: '',
         },
         fileUrl: {
-            type: String,
+            type:    String,
             default: '',
         },
         externalUrl: {
-            type: String,
+            type:    String,
             default: '',
         },
         order: {
-            type: Number,
+            type:    Number,
             default: 0,
         },
         isPublished: {
-            type: Boolean,
+            type:    Boolean,
             default: false,
         },
         duration: {
-            type: Number,
+            // in minutes
+            type:    Number,
             default: 0,
         },
         tags: [String],
-    },{ timestamps: true }
+    },
+    { timestamps: true }
 );
 
 lessonSchema.index({ subject: 1, order: 1 });
-lessonSchema.index({ course: 1 });
-// lessonSchema.index({ title: 'text', content: 'text' });
+lessonSchema.index({ section: 1 });
+lessonSchema.index({ teacher: 1 });
 
 module.exports = mongoose.model('Lesson', lessonSchema);

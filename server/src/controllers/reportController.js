@@ -1,26 +1,27 @@
-const User        = require('../models/User');
-const Course      = require('../models/Course');
-const Enrollment  = require('../models/Enrollment');
-const Attendance  = require('../models/Attendance');
-const Assignment  = require('../models/Assignment');
-const Submission  = require('../models/Submission');
-const Quiz        = require('../models/Quiz');
-const Fee         = require('../models/Fee');
-const PDFDocument = require('pdfkit');
+const mongoose        = require('mongoose');
+const User             = require('../models/User');
+const Subject          = require('../models/Subject');
+const SubjectEnrollment = require('../models/SubjectEnrollment');
+const Attendance       = require('../models/Attendance');
+const Assignment       = require('../models/Assignment');
+const Submission       = require('../models/Submission');
+const Quiz             = require('../models/Quiz');
+const Fee              = require('../models/Fee');
+const PDFDocument      = require('pdfkit');
 const { addHeader, addTable, addStatRow } = require('../utils/pdfGenerator');
 
 // ─── ADMIN: master dashboard stats ──────────────────────────────────────────
 exports.getAdminDashboard = async (req, res) => {
     try {
         const [
-            totalStudents, totalTeachers, totalCourses,
+            totalStudents, totalTeachers, totalSubjects,
             activeEnrollments, feeStats, attendanceSummary,
             monthlyEnrollments, submissionsGraded,
         ] = await Promise.all([
             User.countDocuments({ role: 'student', isActive: true }),
             User.countDocuments({ role: 'teacher', isActive: true }),
-            Course.countDocuments({ status: 'active' }),
-            Enrollment.countDocuments({ status: 'active' }),
+            Subject.countDocuments({ isActive: true }),
+            SubjectEnrollment.countDocuments({ status: 'active' }),
 
             // Fee aggregation
             Fee.aggregate([
@@ -42,11 +43,12 @@ exports.getAdminDashboard = async (req, res) => {
                     }},
             ]),
 
-            // Monthly enrollment trend (last 6 months)
-            Enrollment.aggregate([
-                { $match: { enrolledAt: { $gte: new Date(Date.now() - 180 * 86400000) } } },
+            // Monthly enrollment trend (last 6 months) — SubjectEnrollment has
+            // no `enrolledAt`, so we use its `createdAt` timestamp instead.
+            SubjectEnrollment.aggregate([
+                { $match: { createdAt: { $gte: new Date(Date.now() - 180 * 86400000) } } },
                 { $group: {
-                        _id: { year: { $year: '$enrolledAt' }, month: { $month: '$enrolledAt' } },
+                        _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
                         count: { $sum: 1 },
                     }},
                 { $sort: { '_id.year': 1, '_id.month': 1 } },
@@ -79,7 +81,7 @@ exports.getAdminDashboard = async (req, res) => {
             stats: {
                 totalStudents,
                 totalTeachers,
-                totalCourses,
+                totalSubjects,
                 activeEnrollments,
                 attendanceRate,
                 feeCollectionRate: fees.totalExpected > 0
@@ -97,31 +99,44 @@ exports.getAdminDashboard = async (req, res) => {
     }
 };
 
-// ─── ADMIN: per-course analytics ─────────────────────────────────────────────
-exports.getCourseAnalytics = async (req, res) => {
+// ─── ADMIN: per-subject analytics ────────────────────────────────────────────
+exports.getSubjectAnalytics = async (req, res) => {
     try {
-        const courses = await Course.find({ status: 'active' }).lean();
-
-        const courseIds = courses.map((c) => c._id);
+        const subjects = await Subject.find({ isActive: true }).lean();
+        const subjectIds = subjects.map((s) => s._id);
 
         const [enrollmentCounts, attendanceRates, submissionRates] = await Promise.all([
-            Enrollment.aggregate([
-                { $match: { course: { $in: courseIds }, status: 'active' } },
-                { $group: { _id: '$course', count: { $sum: 1 } } },
+            SubjectEnrollment.aggregate([
+                { $match: { subject: { $in: subjectIds }, status: 'active' } },
+                { $group: { _id: '$subject', count: { $sum: 1 } } },
             ]),
 
             Attendance.aggregate([
-                { $match: { course: { $in: courseIds }, date: { $gte: new Date(Date.now() - 30 * 86400000) } } },
+                { $match: { subject: { $in: subjectIds }, date: { $gte: new Date(Date.now() - 30 * 86400000) } } },
                 { $group: {
-                        _id: '$course',
+                        _id: '$subject',
                         total: { $sum: 1 },
                         present: { $sum: { $cond: [{ $in: ['$status', ['present','late']] }, 1, 0] } },
                     }},
             ]),
 
+            // Submission has no direct subject reference (only `assignment`),
+            // so we join through Assignment — which does carry `subject` —
+            // to get per-subject submission/grading counts.
             Submission.aggregate([
-                { $match: { course: { $in: courseIds } } },
-                { $group: { _id: '$course', total: { $sum: 1 }, graded: { $sum: { $cond: [{ $eq: ['$status','graded'] }, 1, 0] } } } },
+                { $lookup: {
+                        from: 'assignments',
+                        localField: 'assignment',
+                        foreignField: '_id',
+                        as: 'assignmentInfo',
+                    }},
+                { $unwind: '$assignmentInfo' },
+                { $match: { 'assignmentInfo.subject': { $in: subjectIds } } },
+                { $group: {
+                        _id: '$assignmentInfo.subject',
+                        total: { $sum: 1 },
+                        graded: { $sum: { $cond: [{ $eq: ['$status', 'graded'] }, 1, 0] } },
+                    }},
             ]),
         ]);
 
@@ -129,16 +144,17 @@ exports.getCourseAnalytics = async (req, res) => {
         const attMap = Object.fromEntries(attendanceRates.map((a) => [String(a._id), Math.round((a.present / a.total) * 100)]));
         const subMap = Object.fromEntries(submissionRates.map((s) => [String(s._id), { total: s.total, graded: s.graded }]));
 
-        const analytics = courses.map((c) => ({
-            _id: c._id,
-            title: c.title,
-            code: c.code,
-            department: c.department,
-            maxStudents: c.maxStudents,
-            enrolled: enrollMap[String(c._id)] || 0,
-            attendanceRate: attMap[String(c._id)] || 0,
-            submissions: subMap[String(c._id)]?.total || 0,
-            graded: subMap[String(c._id)]?.graded || 0,
+        const analytics = subjects.map((s) => ({
+            _id: s._id,
+            name: s.name,
+            code: s.code,
+            credits: s.credits,
+            bucket: s.bucket,
+            isMandatory: s.isMandatory,
+            enrolled: enrollMap[String(s._id)] || 0,
+            attendanceRate: attMap[String(s._id)] || 0,
+            submissions: subMap[String(s._id)]?.total || 0,
+            graded: subMap[String(s._id)]?.graded || 0,
         }));
 
         res.status(200).json({ success: true, analytics });
@@ -157,11 +173,11 @@ exports.getStudentReport = async (req, res) => {
         }
 
         const [enrollments, attendanceSummary, submissions, quizAttempts] = await Promise.all([
-            Enrollment.find({ student: studentId })
-                .populate('course', 'title code department'),
+            SubjectEnrollment.find({ student: studentId })
+                .populate('subject', 'name code credits bucket isMandatory'),
 
             Attendance.aggregate([
-                { $match: { student: require('mongoose').Types.ObjectId.createFromHexString(String(studentId)) } },
+                { $match: { student: mongoose.Types.ObjectId.createFromHexString(String(studentId)) } },
                 { $group: {
                         _id: '$subject',
                         total: { $sum: 1 },
@@ -213,6 +229,9 @@ exports.getStudentReport = async (req, res) => {
 };
 
 // ─── TEACHER: class performance report ───────────────────────────────────────
+// Already subject-based under the hood (Attendance groups by `$subject`,
+// Assignment/Submission relate via `assignment`) — no course/enrollment
+// concept was ever in this function, so nothing to migrate here.
 exports.getTeacherReport = async (req, res) => {
     try {
         const teacherId = req.user._id;
@@ -220,23 +239,36 @@ exports.getTeacherReport = async (req, res) => {
         const assignments = await Assignment.find({ teacher: teacherId });
         const assignmentIds = assignments.map((a) => a._id);
 
-        const [submissions, attendanceBySubject, quizResults] = await Promise.all([
+        const [submissions, attendanceBySubjectRaw, quizResults] = await Promise.all([
             Submission.find({ assignment: { $in: assignmentIds } })
                 .populate('student', 'name email profilePhoto')
-                .populate('assignment', 'title totalMarks')
+                .populate({ path: 'assignment', select: 'title totalMarks subject', populate: { path: 'subject', select: 'name code' } })
                 .sort({ submittedAt: -1 }),
 
             Attendance.aggregate([
-                { $match: { markedBy: require('mongoose').Types.ObjectId.createFromHexString(String(teacherId)) } },
+                { $match: { markedBy: mongoose.Types.ObjectId.createFromHexString(String(teacherId)) } },
                 { $group: {
                         _id: '$subject',
                         total: { $sum: 1 },
                         present: { $sum: { $cond: [{ $in: ['$status', ['present','late']] }, 1, 0] } },
                     }},
+                { $lookup: { from: 'subjects', localField: '_id', foreignField: '_id', as: 'subjectInfo' } },
+                { $unwind: '$subjectInfo' },
             ]),
 
             Quiz.find({ teacher: teacherId }).select('title totalMarks attempts'),
         ]);
+
+        // Attach subject name/code + attendance rate so the frontend doesn't
+        // need to look anything up itself.
+        const attendanceBySubject = attendanceBySubjectRaw.map((a) => ({
+            subjectId:   a._id,
+            subjectName: a.subjectInfo.name,
+            subjectCode: a.subjectInfo.code,
+            total:       a.total,
+            present:     a.present,
+            rate:        a.total > 0 ? Math.round((a.present / a.total) * 100) : 0,
+        }));
 
         const gradedCount = submissions.filter((s) => s.status === 'graded').length;
         const pendingCount = submissions.filter((s) => s.status === 'submitted').length;
@@ -285,11 +317,11 @@ exports.exportStudentPDF = async (req, res) => {
         if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
 
         const [enrollments, attendanceSummary, submissions] = await Promise.all([
-            Enrollment.find({ student: studentId }).populate('course', 'title code'),
+            SubjectEnrollment.find({ student: studentId }).populate('subject', 'name code'),
             Attendance.aggregate([
-                { $match: { student: require('mongoose').Types.ObjectId.createFromHexString(String(studentId)) } },
+                { $match: { student: mongoose.Types.ObjectId.createFromHexString(String(studentId)) } },
                 { $group: {
-                        _id: '$course',
+                        _id: '$subject',
                         total: { $sum: 1 },
                         present: { $sum: { $cond: [{ $in: ['$status',['present','late']] }, 1, 0] } },
                     }},
@@ -320,7 +352,7 @@ exports.exportStudentPDF = async (req, res) => {
             : 0;
 
         addStatRow(doc, [
-            { label: 'Courses enrolled', value: enrollments.length, color: '#4F46E5' },
+            { label: 'Subjects enrolled', value: enrollments.length, color: '#4F46E5' },
             { label: 'Overall attendance', value: `${overallAtt}%`, color: overallAtt >= 75 ? '#059669' : '#DC2626' },
             { label: 'Avg assignment score', value: `${avgMarks}%`, color: '#7C3AED' },
             { label: 'Assignments graded', value: submissions.length, color: '#D97706' },
@@ -330,12 +362,12 @@ exports.exportStudentPDF = async (req, res) => {
 
         // Enrollment table
         if (enrollments.length > 0) {
-            doc.fontSize(11).font('Helvetica-Bold').fillColor('#111827').text('Enrolled courses');
+            doc.fontSize(11).font('Helvetica-Bold').fillColor('#111827').text('Enrolled subjects');
             doc.moveDown(0.5);
             addTable(
                 doc,
-                ['Course code', 'Course title', 'Status'],
-                enrollments.map((e) => [e.course?.code, e.course?.title, e.status]),
+                ['Subject code', 'Subject name', 'Status'],
+                enrollments.map((e) => [e.subject?.code, e.subject?.name, e.status]),
                 [100, 300, 100]
             );
         }
@@ -368,14 +400,15 @@ exports.exportStudentPDF = async (req, res) => {
 // ─── PDF: fee collection report ────────────────────────────────────────────────
 exports.exportFeesPDF = async (req, res) => {
     try {
-        const { courseId, status } = req.query;
+        const { sectionId, gradeId, status } = req.query;
         const filter = {};
-        if (courseId) filter.course = courseId;
-        if (status) filter.status = status;
+        if (sectionId) filter.section = sectionId;
+        if (gradeId)   filter.grade   = gradeId;
+        if (status)    filter.status  = status;
 
         const fees = await Fee.find(filter)
             .populate('student', 'name email')
-            .populate('course', 'title code')
+            .populate({ path: 'section', select: 'name grade', populate: { path: 'grade', select: 'name' } })
             .sort({ dueDate: 1 });
 
         const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape' });
@@ -399,17 +432,17 @@ exports.exportFeesPDF = async (req, res) => {
 
         addTable(
             doc,
-            ['Student', 'Course', 'Title', 'Amount', 'Paid', 'Due date', 'Status'],
+            ['Student', 'Section', 'Title', 'Amount', 'Paid', 'Due date', 'Status'],
             fees.map((f) => [
                 f.student?.name,
-                f.course?.code,
+                `${f.section?.grade?.name || ''} ${f.section?.name || ''}`.trim(),
                 f.title,
                 `LKR ${f.netAmount.toLocaleString()}`,
                 `LKR ${f.paidAmount.toLocaleString()}`,
                 new Date(f.dueDate).toLocaleDateString('en-GB'),
                 f.status,
             ]),
-            [130, 70, 150, 90, 90, 90, 70]
+            [130, 90, 130, 90, 90, 90, 70]
         );
 
         doc.end();
@@ -421,8 +454,8 @@ exports.exportFeesPDF = async (req, res) => {
 // ─── PDF: attendance report ────────────────────────────────────────────────────
 exports.exportAttendancePDF = async (req, res) => {
     try {
-        const { courseId } = req.query;
-        const filter = courseId ? { course: require('mongoose').Types.ObjectId.createFromHexString(courseId) } : {};
+        const { subjectId } = req.query;
+        const filter = subjectId ? { subject: mongoose.Types.ObjectId.createFromHexString(subjectId) } : {};
 
         const report = await Attendance.aggregate([
             { $match: filter },

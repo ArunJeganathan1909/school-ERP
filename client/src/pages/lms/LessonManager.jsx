@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import Sidebar from '../../components/Sidebar';
 import {
@@ -7,8 +7,8 @@ import {
     updateLesson,
     deleteLesson,
 } from '../../store/slices/lessonSlice';
+import { fetchMyTeaching } from '../../store/slices/subjectTeacherAssignmentSlice';
 import { uploadLessonFile } from '../../utils/supabase';
-import api from '../../api/axios';
 
 /* ─────────────────── constants ─────────────────── */
 const TYPE_META = {
@@ -22,13 +22,13 @@ const TYPE_META = {
 const EMPTY_FORM = {
     title:       '',
     type:        'text',
-    content:     '',       // text body (always available)
-    externalUrl: '',       // link / embed URL (always available)
-    fileUrl:     '',       // uploaded file URL (always available)
+    content:     '',
+    externalUrl: '',
+    fileUrl:     '',
     duration:    0,
     isPublished: false,
-    course:      '',
-    subject:     '',
+    subject:     '',   // required
+    section:     '',   // optional — pin to one section, or leave blank to share across all
     order:       0,
 };
 
@@ -36,80 +36,63 @@ const EMPTY_FORM = {
 export default function LessonManager() {
     const dispatch = useDispatch();
     const { list: lessons, loading, error: lessonError } = useSelector((s) => s.lessons);
-    const { user } = useSelector((s) => s.auth);
+    const { myTeaching, loading: teachingLoading } = useSelector((s) => s.subjectTeacherAssignments);
 
-    /* teacher's own courses + subjects */
-    const [myCourses,  setMyCourses]  = useState([]);
-    const [mySubjects, setMySubjects] = useState([]);   // all teacher's subjects
-    const [filteredSubjects, setFilteredSubjects] = useState([]); // subjects for selected course
-
-    /* list filter */
-    const [filterCourse, setFilterCourse] = useState('');
+    /* derive unique subjects + their sections from myTeaching */
+    const [mySubjects,       setMySubjects]       = useState([]); // [{ subject, sections: [...] }]
+    const [filterSubject,    setFilterSubject]    = useState('');
 
     /* modal */
-    const [showForm,    setShowForm]    = useState(false);
-    const [editLesson,  setEditLesson]  = useState(null);
-    const [form,        setForm]        = useState(EMPTY_FORM);
+    const [showForm,   setShowForm]   = useState(false);
+    const [editLesson, setEditLesson] = useState(null);
+    const [form,       setForm]       = useState(EMPTY_FORM);
 
     /* file upload state */
-    const [uploadingFile, setUploadingFile] = useState(false);
-    const [uploadError,   setUploadError]   = useState('');
+    const [uploadingFile,    setUploadingFile]    = useState(false);
+    const [uploadError,      setUploadError]      = useState('');
     const [uploadedFileName, setUploadedFileName] = useState('');
 
-    const [saving, setSaving] = useState(false);
+    const [saving,    setSaving]    = useState(false);
     const [formError, setFormError] = useState('');
 
-    /* ── load teacher's subjects (and derive courses from them) ── */
+    /* ── load teacher's subject+section assignments ── */
     useEffect(() => {
-        if (!user?._id) return;
-        api.get(`/subjects?teacher=${user._id}`)
-            .then(({ data }) => {
-                const subjects = data.subjects || [];
-                setMySubjects(subjects);
+        dispatch(fetchMyTeaching());
+    }, [dispatch]);
 
-                // Derive unique courses from the subjects
-                const courseMap = {};
-                subjects.forEach((s) => {
-                    if (s.course) {
-                        const id = s.course._id || s.course;
-                        if (!courseMap[id]) {
-                            courseMap[id] = s.course;
-                        }
-                    }
-                });
-                setMyCourses(Object.values(courseMap));
-            })
-            .catch(() => { setMyCourses([]); setMySubjects([]); });
-    }, [user?._id]);
+    /* ── group assignments by subject ── */
+    useEffect(() => {
+        const grouped = {};
+        myTeaching.forEach((a) => {
+            const sid = a.subject?._id;
+            if (!sid) return;
+            if (!grouped[sid]) grouped[sid] = { subject: a.subject, sections: [] };
+            grouped[sid].sections.push(a.section);
+        });
+        setMySubjects(Object.values(grouped));
+    }, [myTeaching]);
 
-    /* ── load lessons (filtered by course) ── */
+    /* ── load lessons (filtered by subject) ── */
     useEffect(() => {
         const params = {};
-        if (filterCourse) params.course = filterCourse;
+        if (filterSubject) params.subject = filterSubject;
         dispatch(fetchLessons(params));
-    }, [dispatch, filterCourse]);
+    }, [dispatch, filterSubject]);
 
-    /* ── when form course changes, filter subjects ── */
-    useEffect(() => {
-        if (!form.course) {
-            setFilteredSubjects([]);
-            setForm((f) => ({ ...f, subject: '' }));
-            return;
-        }
-        const subs = mySubjects.filter((s) => {
-            const cid = s.course?._id || s.course;
-            return String(cid) === String(form.course);
-        });
-        setFilteredSubjects(subs);
-        // Reset subject if current selection no longer valid
-        const stillValid = subs.find((s) => s._id === form.subject);
-        if (!stillValid) setForm((f) => ({ ...f, subject: '' }));
-    }, [form.course, mySubjects]);
+    /* sections available for whichever subject is selected in the form */
+    const sectionsForFormSubject = form.subject
+        ? mySubjects.find((g) => g.subject?._id === form.subject)?.sections || []
+        : [];
 
     /* ── handlers ── */
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
         setForm((f) => ({ ...f, [name]: type === 'checkbox' ? checked : value }));
+    };
+
+    // Reset section when subject changes (sections list differs per subject)
+    const handleSubjectChange = (e) => {
+        setForm((f) => ({ ...f, subject: e.target.value, section: '' }));
     };
 
     const handleFileUpload = async (e) => {
@@ -138,7 +121,7 @@ export default function LessonManager() {
 
     const openNew = () => {
         setEditLesson(null);
-        setForm(EMPTY_FORM);
+        setForm({ ...EMPTY_FORM, subject: filterSubject || '' });
         setUploadedFileName('');
         setUploadError('');
         setFormError('');
@@ -155,8 +138,8 @@ export default function LessonManager() {
             fileUrl:     lesson.fileUrl     || '',
             duration:    lesson.duration    || 0,
             isPublished: lesson.isPublished || false,
-            course:      lesson.course?._id || lesson.course || '',
             subject:     lesson.subject?._id || lesson.subject || '',
+            section:     lesson.section?._id || lesson.section || '',
             order:       lesson.order       || 0,
         });
         setUploadedFileName(lesson.fileUrl ? '(existing file)' : '');
@@ -169,17 +152,15 @@ export default function LessonManager() {
         e.preventDefault();
         setFormError('');
 
-        if (!form.course)   return setFormError('Please select a course.');
-        if (!form.subject)  return setFormError('Please select a subject.');
+        if (!form.subject)      return setFormError('Please select a subject.');
         if (!form.title.trim()) return setFormError('Title is required.');
 
-        // Need at least one content source
         if (!form.content.trim() && !form.externalUrl.trim() && !form.fileUrl) {
             return setFormError('Add at least one content source — text, a URL, or an uploaded file.');
         }
 
         setSaving(true);
-        const payload = { ...form };
+        const payload = { ...form, section: form.section || null };
 
         try {
             if (editLesson) {
@@ -202,6 +183,9 @@ export default function LessonManager() {
     /* ── helpers ── */
     const typeStyle = (type) => TYPE_META[type] || TYPE_META.text;
 
+    const sectionLabel = (sec) =>
+        sec ? `${sec.grade?.gradeNumber ?? ''}${sec.name}${sec.grade?.stream && sec.grade.stream !== 'none' ? ` (${sec.grade.stream})` : ''}` : '—';
+
     return (
         <div className="app-shell">
             <Sidebar />
@@ -211,31 +195,31 @@ export default function LessonManager() {
                 <div className="topbar">
                     <h1 className="topbar__title">Lesson manager</h1>
                     <div style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center' }}>
-                        {/* Filter by course */}
+                        {/* Filter by subject */}
                         <select
                             className="form-input"
-                            style={{ width: 200, padding: '7px 12px' }}
-                            value={filterCourse}
-                            onChange={(e) => setFilterCourse(e.target.value)}
+                            style={{ width: 220, padding: '7px 12px' }}
+                            value={filterSubject}
+                            onChange={(e) => setFilterSubject(e.target.value)}
                         >
-                            <option value="">All my courses</option>
-                            {myCourses.map((c) => (
-                                <option key={c._id || c} value={c._id || c}>
-                                    {c.title || c}
+                            <option value="">All my subjects</option>
+                            {mySubjects.map(({ subject }) => (
+                                <option key={subject._id} value={subject._id}>
+                                    {subject.name} ({subject.code})
                                 </option>
                             ))}
                         </select>
-                        <button className="btn btn-primary" onClick={openNew}>
+                        <button className="btn btn-primary" onClick={openNew} disabled={mySubjects.length === 0}>
                             + Add lesson
                         </button>
                     </div>
                 </div>
 
                 {/* No subjects warning */}
-                {myCourses.length === 0 && (
+                {!teachingLoading && mySubjects.length === 0 && (
                     <div className="page-body">
                         <div className="alert alert-info">
-                            ⚠ You have no subjects assigned yet. Ask an admin to assign subjects to you before creating lessons.
+                            ⚠ You haven't been assigned to teach any subject yet. Ask an admin to assign you to a section.
                         </div>
                     </div>
                 )}
@@ -250,7 +234,7 @@ export default function LessonManager() {
                         <div className="empty-state">
                             <div className="empty-state__icon">📚</div>
                             <p>No lessons yet.</p>
-                            <button className="btn btn-primary" style={{ marginTop: 'var(--space-md)' }} onClick={openNew}>
+                            <button className="btn btn-primary" style={{ marginTop: 'var(--space-md)' }} onClick={openNew} disabled={mySubjects.length === 0}>
                                 + Add first lesson
                             </button>
                         </div>
@@ -261,8 +245,8 @@ export default function LessonManager() {
                                 <tr>
                                     <th>Title</th>
                                     <th>Type</th>
-                                    <th>Course</th>
                                     <th>Subject</th>
+                                    <th>Section</th>
                                     <th>Order</th>
                                     <th>Status</th>
                                     <th>Actions</th>
@@ -275,28 +259,28 @@ export default function LessonManager() {
                                         <tr key={lesson._id}>
                                             <td style={{ fontWeight: 500 }}>{lesson.title}</td>
                                             <td>
-                                                    <span style={{
-                                                        fontSize: '0.75rem', fontWeight: 600,
-                                                        padding: '2px 8px',
-                                                        borderRadius: 'var(--radius-full)',
-                                                        background: tm.color + '18',
-                                                        color: tm.color,
-                                                        textTransform: 'capitalize',
-                                                    }}>
-                                                        {tm.icon} {lesson.type}
-                                                    </span>
-                                            </td>
-                                            <td style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
-                                                {lesson.course?.code || '—'}
+                          <span style={{
+                              fontSize: '0.75rem', fontWeight: 600,
+                              padding: '2px 8px',
+                              borderRadius: 'var(--radius-full)',
+                              background: tm.color + '18',
+                              color: tm.color,
+                              textTransform: 'capitalize',
+                          }}>
+                            {tm.icon} {lesson.type}
+                          </span>
                                             </td>
                                             <td style={{ color: 'var(--color-text-secondary)' }}>
                                                 {lesson.subject?.name || '—'}
                                             </td>
+                                            <td style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
+                                                {lesson.section ? sectionLabel(lesson.section) : <span style={{ color: 'var(--color-text-muted)' }}>All sections</span>}
+                                            </td>
                                             <td style={{ color: 'var(--color-text-muted)' }}>{lesson.order}</td>
                                             <td>
-                                                    <span className={`badge ${lesson.isPublished ? 'badge-success' : 'badge-error'}`}>
-                                                        {lesson.isPublished ? 'Published' : 'Draft'}
-                                                    </span>
+                          <span className={`badge ${lesson.isPublished ? 'badge-success' : 'badge-error'}`}>
+                            {lesson.isPublished ? 'Published' : 'Draft'}
+                          </span>
                                             </td>
                                             <td>
                                                 <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
@@ -370,54 +354,51 @@ export default function LessonManager() {
                                 </div>
                             </div>
 
-                            {/* ── Row 2: Course → Subject (cascading) ── */}
+                            {/* ── Row 2: Subject → Section (cascading) ── */}
                             <div className="form-row">
-                                <div className="form-group">
-                                    <label className="form-label">Course *</label>
-                                    <select
-                                        className="form-input"
-                                        name="course"
-                                        value={form.course}
-                                        onChange={handleChange}
-                                        required
-                                    >
-                                        <option value="">Select your course</option>
-                                        {myCourses.map((c) => (
-                                            <option key={c._id || c} value={c._id || c}>
-                                                {c.title || c}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    {myCourses.length === 0 && (
-                                        <p style={{ fontSize: '0.75rem', color: 'var(--color-error)', marginTop: 4 }}>
-                                            No courses found. Ask admin to assign subjects to you.
-                                        </p>
-                                    )}
-                                </div>
                                 <div className="form-group">
                                     <label className="form-label">Subject *</label>
                                     <select
                                         className="form-input"
                                         name="subject"
                                         value={form.subject}
-                                        onChange={handleChange}
+                                        onChange={handleSubjectChange}
                                         required
-                                        disabled={!form.course}
                                     >
-                                        <option value="">
-                                            {form.course ? 'Select subject' : 'Select course first'}
-                                        </option>
-                                        {filteredSubjects.map((s) => (
-                                            <option key={s._id} value={s._id}>
-                                                {s.name} ({s.code})
+                                        <option value="">Select your subject</option>
+                                        {mySubjects.map(({ subject }) => (
+                                            <option key={subject._id} value={subject._id}>
+                                                {subject.name} ({subject.code})
                                             </option>
                                         ))}
                                     </select>
-                                    {form.course && filteredSubjects.length === 0 && (
+                                    {mySubjects.length === 0 && (
                                         <p style={{ fontSize: '0.75rem', color: 'var(--color-error)', marginTop: 4 }}>
-                                            No subjects assigned to you for this course.
+                                            No subjects assigned to you yet.
                                         </p>
                                     )}
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">
+                                        Section <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>(optional)</span>
+                                    </label>
+                                    <select
+                                        className="form-input"
+                                        name="section"
+                                        value={form.section}
+                                        onChange={handleChange}
+                                        disabled={!form.subject}
+                                    >
+                                        <option value="">All my sections for this subject</option>
+                                        {sectionsForFormSubject.map((sec) => (
+                                            <option key={sec._id} value={sec._id}>
+                                                {sectionLabel(sec)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                                        Leave blank to share this lesson with every section you teach for this subject.
+                                    </p>
                                 </div>
                             </div>
 
@@ -432,11 +413,10 @@ export default function LessonManager() {
                                         value={form.duration}
                                         onChange={handleChange}
                                         min={0}
-                                        placeholder="e.g. 30"
                                     />
                                 </div>
                                 <div className="form-group">
-                                    <label className="form-label">Order / position</label>
+                                    <label className="form-label">Order</label>
                                     <input
                                         className="form-input"
                                         type="number"
@@ -444,75 +424,29 @@ export default function LessonManager() {
                                         value={form.order}
                                         onChange={handleChange}
                                         min={0}
-                                        placeholder="0 = first"
                                     />
                                 </div>
                             </div>
 
-                            {/* ══ CONTENT SECTION ══ */}
-                            <div style={{
-                                border: '1.5px solid var(--color-border)',
-                                borderRadius: 'var(--radius-lg)',
-                                overflow: 'hidden',
-                                marginBottom: 'var(--space-md)',
-                            }}>
-                                {/* Section header */}
-                                <div style={{
-                                    background: 'var(--color-bg)',
-                                    padding: 'var(--space-md) var(--space-lg)',
-                                    borderBottom: '1px solid var(--color-border)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 'var(--space-sm)',
-                                }}>
-                                    <span style={{ fontSize: '1rem' }}>📝</span>
+                            {/* ── Content source block ── */}
+                            <div className="form-group">
+                                <label className="form-label">Lesson content</label>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+
+                                    {/* Text content */}
+                                    <textarea
+                                        className="form-input"
+                                        name="content"
+                                        value={form.content}
+                                        onChange={handleChange}
+                                        rows={5}
+                                        placeholder="Write lesson notes, instructions, or any text content here…"
+                                        style={{ resize: 'vertical' }}
+                                    />
+
+                                    {/* File upload */}
                                     <div>
-                                        <p style={{ fontWeight: 600, fontSize: '0.9375rem' }}>Lesson content</p>
-                                        <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                                            You can add multiple content types at once — text notes, a file upload, and an external link all together.
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div style={{ padding: 'var(--space-lg)', display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
-
-                                    {/* ── Text body (always shown) ── */}
-                                    <div className="form-group" style={{ marginBottom: 0 }}>
-                                        <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                            <span>📄</span> Text / notes
-                                            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 400 }}>
-                                                — optional
-                                            </span>
-                                        </label>
-                                        <textarea
-                                            className="form-input"
-                                            name="content"
-                                            value={form.content}
-                                            onChange={handleChange}
-                                            rows={6}
-                                            placeholder="Write lesson notes, explanations, or HTML here…"
-                                            style={{ resize: 'vertical', fontFamily: 'var(--font-mono)', fontSize: '0.875rem' }}
-                                        />
-                                    </div>
-
-                                    {/* Divider */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
-                                        <div style={{ flex: 1, height: 1, background: 'var(--color-border)' }} />
-                                        <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>AND / OR</span>
-                                        <div style={{ flex: 1, height: 1, background: 'var(--color-border)' }} />
-                                    </div>
-
-                                    {/* ── File upload ── */}
-                                    <div className="form-group" style={{ marginBottom: 0 }}>
-                                        <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                            <span>📎</span> Upload file
-                                            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 400 }}>
-                                                — PDF, video, slide, image, etc.
-                                            </span>
-                                        </label>
-
                                         {form.fileUrl ? (
-                                                /* File already uploaded */
                                                 <div style={{
                                                     display: 'flex',
                                                     alignItems: 'center',
@@ -527,7 +461,7 @@ export default function LessonManager() {
                                                         <p style={{ fontWeight: 600, fontSize: '0.875rem', color: '#059669' }}>
                                                             {uploadedFileName || 'File uploaded'}
                                                         </p>
-                                                    <a
+<a
                                                         href={form.fileUrl}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
@@ -536,16 +470,11 @@ export default function LessonManager() {
                                                         Preview file ↗
                                                     </a>
                                                 </div>
-                                            <button
-                                                type="button"
-                                                className="btn btn-danger btn-sm"
-                                                onClick={clearFile}
-                                            >
+                                            <button type="button" className="btn btn-danger btn-sm" onClick={clearFile}>
                                                 Remove
                                             </button>
                                             </div>
                                             ) : (
-                                            /* Upload dropzone */
                                             <label style={{
                                             display: 'flex',
                                             flexDirection: 'column',
@@ -559,8 +488,8 @@ export default function LessonManager() {
                                             background: uploadingFile ? 'var(--color-bg)' : 'var(--color-surface)',
                                             transition: 'border-color var(--transition-fast)',
                                         }}
-                                         onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--color-primary)'}
-                                         onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--color-border)'}
+                                        onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--color-primary)'}
+                                        onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--color-border)'}
                                     >
                                         {uploadingFile ? (
                                             <>
@@ -571,11 +500,11 @@ export default function LessonManager() {
                                             <>
                                                 <span style={{ fontSize: '2rem' }}>☁</span>
                                                 <span style={{ fontSize: '0.9375rem', fontWeight: 500, color: 'var(--color-text-primary)' }}>
-                                                            Click to upload a file
-                                                        </span>
+                              Click to upload a file
+                            </span>
                                                 <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                                                            PDF, MP4, PPTX, DOCX, JPG, PNG — any file type
-                                                        </span>
+                              PDF, MP4, PPTX, DOCX, JPG, PNG — any file type
+                            </span>
                                             </>
                                         )}
                                         <input
@@ -602,13 +531,13 @@ export default function LessonManager() {
                                     <div style={{ flex: 1, height: 1, background: 'var(--color-border)' }} />
                                 </div>
 
-                                {/* ── External URL ── */}
+                                {/* External URL */}
                                 <div className="form-group" style={{ marginBottom: 0 }}>
                                     <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                         <span>🔗</span> External URL
                                         <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 400 }}>
-                                                — YouTube, Google Drive, website, etc.
-                                            </span>
+                        — YouTube, Google Drive, website, etc.
+                      </span>
                                     </label>
                                     <input
                                         className="form-input"

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const {
-    getAdminDashboard, getCourseAnalytics,
+    getAdminDashboard, getSubjectAnalytics,
     getStudentReport, getTeacherReport,
     exportStudentPDF, exportFeesPDF, exportAttendancePDF
 } = require('../controllers/reportController');
@@ -9,7 +9,7 @@ const { protect } = require('../middleware/authMiddleware');
 const { authorize } = require('../middleware/roleMiddleware');
 
 router.get('/admin/dashboard', protect, authorize('admin'), getAdminDashboard);
-router.get('/admin/courses', protect, authorize('admin'), getCourseAnalytics);
+router.get('/admin/subjects', protect, authorize('admin'), getSubjectAnalytics);
 router.get('/student/:studentId', protect, getStudentReport);
 router.get('/teacher', protect, authorize('teacher'), getTeacherReport);
 

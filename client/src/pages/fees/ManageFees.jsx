@@ -5,8 +5,10 @@ import NotificationBell from '../../components/NotificationBell';
 import {
     fetchAllFees,
     createFee,
+    createSectionFees,
     recordPayment,
     deleteFee,
+    clearBulkResult,
 } from '../../store/slices/feeSlice';
 import api from '../../api/axios';
 import './ManageFees.css';
@@ -22,31 +24,36 @@ const STATUS_STYLES = {
     waived:  { bg: '#F9FAFB', color: '#6B7280' },
 };
 
-const EMPTY_FEE = {
-    student:      '',
-    courses:      [],   // array of selected course IDs
+const EMPTY_FEE_DETAILS = {
     feeType:      'tuition',
     title:        '',
     totalAmount:  '',
     discount:     0,
     dueDate:      '',
-    academicYear: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
     semester:     1,
 };
 
 export default function ManageFees() {
     const dispatch = useDispatch();
-    const { list: fees, stats, total, loading, error } = useSelector((s) => s.fees);
+    const { list: fees, stats, total, loading, error, bulkResult, bulkLoading, bulkError } = useSelector((s) => s.fees);
 
     const [statusFilter, setStatusFilter] = useState('');
 
     // Create modal
     const [showCreate, setShowCreate] = useState(false);
-    const [form, setForm]             = useState(EMPTY_FEE);
+    const [createMode, setCreateMode] = useState('section'); // 'section' | 'student'
+    const [details, setDetails]       = useState(EMPTY_FEE_DETAILS);
     const [saving, setSaving]         = useState(false);
     const [formError, setFormError]   = useState('');
 
-    // Student search state
+    // ── Section mode: grade → section cascading select ──
+    const [grades, setGrades]           = useState([]);
+    const [sections, setSections]       = useState([]);
+    const [selectedGrade, setSelectedGrade]     = useState('');
+    const [selectedSection, setSelectedSection] = useState('');
+    const [sectionsLoading, setSectionsLoading] = useState(false);
+
+    // ── Student mode: student search ──
     const [studentSearch,   setStudentSearch]   = useState('');
     const [studentResults,  setStudentResults]  = useState([]);
     const [studentLoading,  setStudentLoading]  = useState(false);
@@ -55,9 +62,9 @@ export default function ManageFees() {
     const searchRef  = useRef(null);
     const debounceRef = useRef(null);
 
-    // Enrolled courses for selected student
-    const [enrolledCourses,  setEnrolledCourses]  = useState([]);
-    const [coursesLoading,   setCoursesLoading]   = useState(false);
+    // Active section for the selected student (read-only, informational)
+    const [studentSection, setStudentSection]     = useState(null);
+    const [studentSectionLoading, setStudentSectionLoading] = useState(false);
 
     // Payment modal
     const [showPayment,  setShowPayment]  = useState(null);
@@ -76,6 +83,23 @@ export default function ManageFees() {
         dispatch(fetchAllFees(params));
     }, [dispatch, statusFilter]);
 
+    /* ── load grades once ── */
+    useEffect(() => {
+        api.get('/grades')
+            .then(({ data }) => setGrades(data.grades || data.records || []))
+            .catch(() => setGrades([]));
+    }, []);
+
+    /* ── load sections whenever grade changes ── */
+    useEffect(() => {
+        if (!selectedGrade) { setSections([]); setSelectedSection(''); return; }
+        setSectionsLoading(true);
+        api.get(`/sections?grade=${selectedGrade}`)
+            .then(({ data }) => setSections(data.sections || data.records || []))
+            .catch(() => setSections([]))
+            .finally(() => setSectionsLoading(false));
+    }, [selectedGrade]);
+
     /* ── close student dropdown on outside click ── */
     useEffect(() => {
         const handler = (e) => {
@@ -92,11 +116,9 @@ export default function ManageFees() {
         setStudentSearch(value);
         setShowDropdown(true);
 
-        // Clear selected student if user edits search
         if (selectedStudent && value !== selectedStudent.name) {
             setSelectedStudent(null);
-            setForm((f) => ({ ...f, student: '', courses: [] }));
-            setEnrolledCourses([]);
+            setStudentSection(null);
         }
 
         clearTimeout(debounceRef.current);
@@ -125,105 +147,117 @@ export default function ManageFees() {
         setStudentSearch(student.name);
         setShowDropdown(false);
         setStudentResults([]);
-        setForm((f) => ({ ...f, student: student._id, courses: [] }));
 
-        // Load enrolled courses for this student using admin endpoint
-        setCoursesLoading(true);
+        // Look up the student's current active section (read-only context —
+        // the fee will be billed against whatever section they're in).
+        setStudentSectionLoading(true);
         try {
             const { data } = await api.get(
-                `/enrollments?student=${student._id}&status=active&limit=50`
+                `/student-sections?student=${student._id}&status=active&limit=1`
             );
-            const enrollments = data.enrollments || [];
-            // Extract the course object from each enrollment
-            const courses = enrollments
-                .map((e) => e.course)
-                .filter(Boolean);
-            setEnrolledCourses(courses);
+            const ss = (data.records || [])[0] || null;
+            setStudentSection(ss);
         } catch (err) {
-            console.error('Failed to load enrollments:', err);
-            setEnrolledCourses([]);
+            console.error('Failed to load active section:', err);
+            setStudentSection(null);
         }
-        setCoursesLoading(false);
+        setStudentSectionLoading(false);
     };
 
-    /* ── toggle course selection ── */
-    const toggleCourse = (courseId) => {
-        setForm((f) => {
-            const already = f.courses.includes(courseId);
-            return {
-                ...f,
-                courses: already
-                    ? f.courses.filter((id) => id !== courseId)
-                    : [...f.courses, courseId],
-            };
-        });
-    };
-
-    /* ── handle regular form fields ── */
+    /* ── handle fee-detail form fields (shared by both modes) ── */
     const handleChange = (e) => {
         const { name, value } = e.target;
-        setForm((f) => ({ ...f, [name]: value }));
+        setDetails((f) => ({ ...f, [name]: value }));
     };
 
     /* ── open create modal ── */
     const openCreate = () => {
-        setForm(EMPTY_FEE);
+        setDetails(EMPTY_FEE_DETAILS);
+        setCreateMode('section');
+        setSelectedGrade('');
+        setSelectedSection('');
         setSelectedStudent(null);
         setStudentSearch('');
-        setEnrolledCourses([]);
+        setStudentSection(null);
         setFormError('');
+        dispatch(clearBulkResult());
         setShowCreate(true);
     };
 
-    /* ── submit: create one fee per selected course ── */
-    const handleCreate = async (e) => {
+    /* ── submit: generate the same invoice for every active student in a section ── */
+    const handleCreateSection = async (e) => {
         e.preventDefault();
         setFormError('');
 
-        if (!form.student) {
-            setFormError('Please select a student.');
+        if (!selectedSection) {
+            setFormError('Please select a grade and section.');
             return;
         }
-        if (form.courses.length === 0) {
-            setFormError('Please select at least one course.');
-            return;
-        }
-        if (!form.title || !form.totalAmount || !form.dueDate) {
+        if (!details.title || !details.totalAmount || !details.dueDate) {
             setFormError('Title, amount, and due date are required.');
             return;
         }
 
         setSaving(true);
-        try {
-            // Create one invoice per selected course
-            for (const courseId of form.courses) {
-                await api.post('/fees', {
-                    student:      form.student,
-                    course:       courseId,
-                    feeType:      form.feeType,
-                    title:        form.title,
-                    totalAmount:  Number(form.totalAmount),
-                    discount:     Number(form.discount) || 0,
-                    dueDate:      form.dueDate,
-                    academicYear: form.academicYear,
-                    semester:     Number(form.semester),
-                });
-            }
-
-            setShowCreate(false);
-            setForm(EMPTY_FEE);
-            setSelectedStudent(null);
-            setStudentSearch('');
-            setEnrolledCourses([]);
-
-            // Refresh fee list
-            const params = { limit: 30 };
-            if (statusFilter) params.status = statusFilter;
-            dispatch(fetchAllFees(params));
-        } catch (err) {
-            setFormError(err.response?.data?.message || 'Failed to create invoice');
-        }
+        const result = await dispatch(createSectionFees({
+            section:     selectedSection,
+            feeType:     details.feeType,
+            title:       details.title,
+            totalAmount: Number(details.totalAmount),
+            discount:    Number(details.discount) || 0,
+            dueDate:     details.dueDate,
+            semester:    Number(details.semester),
+        }));
         setSaving(false);
+
+        if (createSectionFees.rejected.match(result)) {
+            setFormError(result.payload || 'Failed to create invoices');
+            return;
+        }
+
+        setShowCreate(false);
+        const params = { limit: 30 };
+        if (statusFilter) params.status = statusFilter;
+        dispatch(fetchAllFees(params));
+    };
+
+    /* ── submit: single ad-hoc invoice for one student ── */
+    const handleCreateStudent = async (e) => {
+        e.preventDefault();
+        setFormError('');
+
+        if (!selectedStudent) {
+            setFormError('Please select a student.');
+            return;
+        }
+        if (!studentSection) {
+            setFormError('This student has no active section, so an invoice cannot be billed to them.');
+            return;
+        }
+        if (!details.title || !details.totalAmount || !details.dueDate) {
+            setFormError('Title, amount, and due date are required.');
+            return;
+        }
+
+        setSaving(true);
+        const result = await dispatch(createFee({
+            student:     selectedStudent._id,
+            section:     studentSection.section?._id || studentSection.section,
+            feeType:     details.feeType,
+            title:       details.title,
+            totalAmount: Number(details.totalAmount),
+            discount:    Number(details.discount) || 0,
+            dueDate:     details.dueDate,
+            semester:    Number(details.semester),
+        }));
+        setSaving(false);
+
+        if (createFee.rejected.match(result)) {
+            setFormError(result.payload || 'Failed to create invoice');
+            return;
+        }
+
+        setShowCreate(false);
     };
 
     /* ── record payment ── */
@@ -255,6 +289,9 @@ export default function ManageFees() {
     /* ── initials helper ── */
     const initials = (name) =>
         name?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || '?';
+
+    const sectionLabel = (section) =>
+        section ? `${section.grade?.name || 'Grade'} ${section.name}` : '—';
 
     return (
         <div className="app-shell">
@@ -320,7 +357,8 @@ export default function ManageFees() {
                                 <tr>
                                     <th>Student</th>
                                     <th>Title</th>
-                                    <th>Course</th>
+                                    <th>Section</th>
+                                    <th>Term</th>
                                     <th>Amount</th>
                                     <th>Paid</th>
                                     <th>Due date</th>
@@ -331,7 +369,7 @@ export default function ManageFees() {
                                 <tbody>
                                 {fees.length === 0 ? (
                                     <tr>
-                                        <td colSpan={8} style={{ textAlign: 'center', padding: 'var(--space-2xl)', color: 'var(--color-text-muted)' }}>
+                                        <td colSpan={9} style={{ textAlign: 'center', padding: 'var(--space-2xl)', color: 'var(--color-text-muted)' }}>
                                             No fee records found.
                                         </td>
                                     </tr>
@@ -359,7 +397,12 @@ export default function ManageFees() {
                                                     {fee.feeType}
                                                 </div>
                                             </td>
-                                            <td style={{ color: 'var(--color-text-secondary)' }}>{fee.course?.code}</td>
+                                            <td style={{ color: 'var(--color-text-secondary)' }}>
+                                                {sectionLabel(fee.section)}
+                                            </td>
+                                            <td style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem' }}>
+                                                {fee.academicYear?.name || '—'}<br />Sem {fee.semester}
+                                            </td>
                                             <td style={{ fontWeight: 600 }}>{fmt(fee.netAmount)}</td>
                                             <td style={{ color: fee.paidAmount >= fee.netAmount ? '#059669' : 'var(--color-text-secondary)' }}>
                                                 {fmt(fee.paidAmount)}
@@ -445,146 +488,169 @@ export default function ManageFees() {
                             <button className="btn btn-ghost btn-sm" onClick={() => setShowCreate(false)}>✕</button>
                         </div>
 
+                        {/* Mode toggle */}
+                        <div className="course-list__status-tabs" style={{ margin: '0 var(--space-lg) var(--space-sm)' }}>
+                            <button
+                                type="button"
+                                className={`course-status-tab ${createMode === 'section' ? 'active' : ''}`}
+                                onClick={() => { setCreateMode('section'); setFormError(''); }}
+                            >
+                                Whole section (recurring)
+                            </button>
+                            <button
+                                type="button"
+                                className={`course-status-tab ${createMode === 'student' ? 'active' : ''}`}
+                                onClick={() => { setCreateMode('student'); setFormError(''); }}
+                            >
+                                Single student
+                            </button>
+                        </div>
+
                         {formError && (
                             <div className="alert alert-error" style={{ margin: '0 var(--space-lg) var(--space-sm)' }}>
                                 {formError}
                             </div>
                         )}
+                        {bulkError && createMode === 'section' && (
+                            <div className="alert alert-error" style={{ margin: '0 var(--space-lg) var(--space-sm)' }}>
+                                {bulkError}
+                            </div>
+                        )}
 
-                        <form className="modal__body" onSubmit={handleCreate}>
+                        <form
+                            className="modal__body"
+                            onSubmit={createMode === 'section' ? handleCreateSection : handleCreateStudent}
+                        >
+                            {createMode === 'section' ? (
+                                <>
+                                    <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginTop: 0 }}>
+                                        Creates the same invoice for every active student in the section — use this
+                                        each semester for tuition, exam fees, etc.
+                                    </p>
 
-                            {/* ── Student search ── */}
-                            <div className="form-group">
-                                <label className="form-label">Student *</label>
-                                <div className="fee-student-search" ref={searchRef}>
-                                    <div className="fee-student-search__input-wrap">
-                                        <span className="fee-student-search__icon">🔍</span>
-                                        <input
-                                            className="fee-student-search__input"
-                                            type="text"
-                                            placeholder="Type student name or email to search…"
-                                            value={studentSearch}
-                                            onChange={(e) => handleStudentSearch(e.target.value)}
-                                            onFocus={() => studentSearch && setShowDropdown(true)}
-                                            autoComplete="off"
-                                        />
+                                    {/* ── Grade + Section ── */}
+                                    <div className="form-row">
+                                        <div className="form-group">
+                                            <label className="form-label">Grade *</label>
+                                            <select
+                                                className="form-input"
+                                                value={selectedGrade}
+                                                onChange={(e) => setSelectedGrade(e.target.value)}
+                                            >
+                                                <option value="">Select grade…</option>
+                                                {grades.map((g) => (
+                                                    <option key={g._id} value={g._id}>{g.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="form-group">
+                                            <label className="form-label">Section *</label>
+                                            <select
+                                                className="form-input"
+                                                value={selectedSection}
+                                                onChange={(e) => setSelectedSection(e.target.value)}
+                                                disabled={!selectedGrade || sectionsLoading}
+                                            >
+                                                <option value="">
+                                                    {sectionsLoading ? 'Loading…' : 'Select section…'}
+                                                </option>
+                                                {sections.map((s) => (
+                                                    <option key={s._id} value={s._id}>{s.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    {/* ── Student search ── */}
+                                    <div className="form-group">
+                                        <label className="form-label">Student *</label>
+                                        <div className="fee-student-search" ref={searchRef}>
+                                            <div className="fee-student-search__input-wrap">
+                                                <span className="fee-student-search__icon">🔍</span>
+                                                <input
+                                                    className="fee-student-search__input"
+                                                    type="text"
+                                                    placeholder="Type student name or email to search…"
+                                                    value={studentSearch}
+                                                    onChange={(e) => handleStudentSearch(e.target.value)}
+                                                    onFocus={() => studentSearch && setShowDropdown(true)}
+                                                    autoComplete="off"
+                                                />
+                                                {selectedStudent && (
+                                                    <span className="fee-student-search__check">✓</span>
+                                                )}
+                                            </div>
+
+                                            {showDropdown && (
+                                                <div className="fee-student-dropdown">
+                                                    {studentLoading ? (
+                                                        <div className="fee-student-dropdown__loading">
+                                                            <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} />
+                                                            <span>Searching…</span>
+                                                        </div>
+                                                    ) : studentResults.length === 0 ? (
+                                                        <div className="fee-student-dropdown__empty">
+                                                            {studentSearch.length > 0 ? 'No students found.' : 'Start typing to search students.'}
+                                                        </div>
+                                                    ) : studentResults.map((s) => (
+                                                        <button
+                                                            key={s._id}
+                                                            type="button"
+                                                            className="fee-student-dropdown__item"
+                                                            onClick={() => handleSelectStudent(s)}
+                                                        >
+                                                            <div className="fee-student-dropdown__avatar">
+                                                                {initials(s.name)}
+                                                            </div>
+                                                            <div>
+                                                                <div className="fee-student-dropdown__name">{s.name}</div>
+                                                                <div className="fee-student-dropdown__email">{s.email}</div>
+                                                            </div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+
                                         {selectedStudent && (
-                                            <span className="fee-student-search__check">✓</span>
+                                            <div className="fee-selected-student">
+                                                <div className="fee-selected-student__avatar">
+                                                    {initials(selectedStudent.name)}
+                                                </div>
+                                                <div className="fee-selected-student__info">
+                                                    <span className="fee-selected-student__name">{selectedStudent.name}</span>
+                                                    <span className="fee-selected-student__email">
+                                                        {studentSectionLoading
+                                                            ? 'Loading section…'
+                                                            : studentSection
+                                                                ? `${studentSection.grade?.name || ''} ${studentSection.section?.displayName || studentSection.section?.name || ''}`.trim()
+                                                                : 'No active section — cannot bill'}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className="fee-selected-student__remove"
+                                                    onClick={() => {
+                                                        setSelectedStudent(null);
+                                                        setStudentSearch('');
+                                                        setStudentSection(null);
+                                                    }}
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
-
-                                    {/* Dropdown results */}
-                                    {showDropdown && (
-                                        <div className="fee-student-dropdown">
-                                            {studentLoading ? (
-                                                <div className="fee-student-dropdown__loading">
-                                                    <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} />
-                                                    <span>Searching…</span>
-                                                </div>
-                                            ) : studentResults.length === 0 ? (
-                                                <div className="fee-student-dropdown__empty">
-                                                    {studentSearch.length > 0 ? 'No students found.' : 'Start typing to search students.'}
-                                                </div>
-                                            ) : studentResults.map((s) => (
-                                                <button
-                                                    key={s._id}
-                                                    type="button"
-                                                    className="fee-student-dropdown__item"
-                                                    onClick={() => handleSelectStudent(s)}
-                                                >
-                                                    <div className="fee-student-dropdown__avatar">
-                                                        {initials(s.name)}
-                                                    </div>
-                                                    <div>
-                                                        <div className="fee-student-dropdown__name">{s.name}</div>
-                                                        <div className="fee-student-dropdown__email">{s.email}</div>
-                                                    </div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Selected student chip */}
-                                {selectedStudent && (
-                                    <div className="fee-selected-student">
-                                        <div className="fee-selected-student__avatar">
-                                            {initials(selectedStudent.name)}
-                                        </div>
-                                        <div className="fee-selected-student__info">
-                                            <span className="fee-selected-student__name">{selectedStudent.name}</span>
-                                            <span className="fee-selected-student__email">{selectedStudent.email}</span>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            className="fee-selected-student__remove"
-                                            onClick={() => {
-                                                setSelectedStudent(null);
-                                                setStudentSearch('');
-                                                setEnrolledCourses([]);
-                                                setForm((f) => ({ ...f, student: '', courses: [] }));
-                                            }}
-                                        >
-                                            ✕
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* ── Course selection (only after student selected) ── */}
-                            <div className="form-group">
-                                <label className="form-label">
-                                    Course(s) * — select one or more
-                                </label>
-
-                                {!selectedStudent ? (
-                                    <div className="fee-course-placeholder">
-                                        👆 Select a student first to see their enrolled courses
-                                    </div>
-                                ) : coursesLoading ? (
-                                    <div className="fee-course-placeholder">
-                                        <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} />
-                                        <span>Loading enrolled courses…</span>
-                                    </div>
-                                ) : enrolledCourses.length === 0 ? (
-                                    <div className="fee-course-placeholder fee-course-placeholder--warn">
-                                        ⚠ This student is not enrolled in any active courses.
-                                    </div>
-                                ) : (
-                                    <div className="fee-course-checkboxes">
-                                        {enrolledCourses.map((course) => {
-                                            const selected = form.courses.includes(course._id);
-                                            return (
-                                                <label
-                                                    key={course._id}
-                                                    className={`fee-course-checkbox ${selected ? 'selected' : ''}`}
-                                                    onClick={() => toggleCourse(course._id)}
-                                                >
-                                                    <div className="fee-course-checkbox__check">
-                                                        {selected ? '✓' : ''}
-                                                    </div>
-                                                    <div className="fee-course-checkbox__info">
-                                                        <span className="fee-course-checkbox__code">{course.code}</span>
-                                                        <span className="fee-course-checkbox__title">{course.title}</span>
-                                                    </div>
-                                                </label>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-
-                                {form.courses.length > 1 && (
-                                    <p className="fee-multi-note">
-                                        ℹ {form.courses.length} courses selected — a separate invoice will be created for each.
-                                    </p>
-                                )}
-                            </div>
+                                </>
+                            )}
 
                             {/* ── Fee type + Title ── */}
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Fee type</label>
-                                    <select className="form-input" name="feeType" value={form.feeType} onChange={handleChange}>
+                                    <select className="form-input" name="feeType" value={details.feeType} onChange={handleChange}>
                                         {FEE_TYPES.map((t) => (
                                             <option key={t} value={t}>
                                                 {t.charAt(0).toUpperCase() + t.slice(1)}
@@ -597,7 +663,7 @@ export default function ManageFees() {
                                     <input
                                         className="form-input"
                                         name="title"
-                                        value={form.title}
+                                        value={details.title}
                                         onChange={handleChange}
                                         placeholder="e.g. Semester 1 tuition fee"
                                     />
@@ -612,7 +678,7 @@ export default function ManageFees() {
                                         className="form-input"
                                         type="number"
                                         name="totalAmount"
-                                        value={form.totalAmount}
+                                        value={details.totalAmount}
                                         onChange={handleChange}
                                         min={0}
                                         placeholder="0"
@@ -624,7 +690,7 @@ export default function ManageFees() {
                                         className="form-input"
                                         type="number"
                                         name="discount"
-                                        value={form.discount}
+                                        value={details.discount}
                                         onChange={handleChange}
                                         min={0}
                                         placeholder="0"
@@ -633,14 +699,14 @@ export default function ManageFees() {
                             </div>
 
                             {/* Net amount preview */}
-                            {form.totalAmount && (
+                            {details.totalAmount && (
                                 <div className="fee-net-preview">
-                                    <span>Net amount payable:</span>
-                                    <strong>{fmt(Number(form.totalAmount) - Number(form.discount || 0))}</strong>
+                                    <span>Net amount payable{createMode === 'section' ? ' (per student)' : ''}:</span>
+                                    <strong>{fmt(Number(details.totalAmount) - Number(details.discount || 0))}</strong>
                                 </div>
                             )}
 
-                            {/* ── Due date + Academic year ── */}
+                            {/* ── Due date + Semester ── */}
                             <div className="form-row">
                                 <div className="form-group">
                                     <label className="form-label">Due date *</label>
@@ -648,41 +714,33 @@ export default function ManageFees() {
                                         className="form-input"
                                         type="date"
                                         name="dueDate"
-                                        value={form.dueDate}
+                                        value={details.dueDate}
                                         onChange={handleChange}
                                     />
                                 </div>
                                 <div className="form-group">
-                                    <label className="form-label">Academic year</label>
-                                    <input
-                                        className="form-input"
-                                        name="academicYear"
-                                        value={form.academicYear}
-                                        onChange={handleChange}
-                                        placeholder="2024-2025"
-                                    />
+                                    <label className="form-label">Semester</label>
+                                    <select className="form-input" name="semester" value={details.semester} onChange={handleChange}>
+                                        {[1, 2, 3, 4].map((s) => (
+                                            <option key={s} value={s}>Semester {s}</option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
 
-                            {/* ── Semester ── */}
-                            <div className="form-group" style={{ maxWidth: 200 }}>
-                                <label className="form-label">Semester</label>
-                                <select className="form-input" name="semester" value={form.semester} onChange={handleChange}>
-                                    {[1, 2, 3, 4, 5, 6].map((s) => (
-                                        <option key={s} value={s}>Semester {s}</option>
-                                    ))}
-                                </select>
-                            </div>
+                            <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                                Academic year is taken automatically from the {createMode === 'section' ? 'section' : "student's active section"}.
+                            </p>
 
                             <div className="modal__footer">
                                 <button type="button" className="btn btn-ghost" onClick={() => setShowCreate(false)}>
                                     Cancel
                                 </button>
-                                <button type="submit" className="btn btn-primary" disabled={saving}>
-                                    {saving
+                                <button type="submit" className="btn btn-primary" disabled={saving || bulkLoading}>
+                                    {saving || bulkLoading
                                         ? <><span className="spinner"></span> Creating…</>
-                                        : form.courses.length > 1
-                                            ? `Create ${form.courses.length} invoices`
+                                        : createMode === 'section'
+                                            ? 'Generate for section'
                                             : 'Create invoice'
                                     }
                                 </button>
@@ -711,7 +769,7 @@ export default function ManageFees() {
                                 <div>
                                     <p style={{ fontWeight: 600 }}>{showPayment.student?.name}</p>
                                     <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
-                                        {showPayment.title} · {showPayment.course?.code}
+                                        {showPayment.title} · {sectionLabel(showPayment.section)}
                                     </p>
                                 </div>
                                 <div style={{ textAlign: 'right' }}>

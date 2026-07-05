@@ -12,7 +12,7 @@ export const fetchAssignments = createAsyncThunk('assignments/fetchAll', async (
 export const fetchAssignment = createAsyncThunk('assignments/fetchOne', async (id, { rejectWithValue }) => {
     try {
         const { data } = await api.get(`/assignments/${id}`);
-        return data;   // { assignment, submission }
+        return data;
     } catch (err) { return rejectWithValue(err.response?.data?.message); }
 });
 

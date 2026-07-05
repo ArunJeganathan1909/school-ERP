@@ -1,42 +1,41 @@
 const mongoose = require('mongoose');
 
-// A single slot in the timetable grid
 const slotSchema = new mongoose.Schema(
     {
-        period: {
-            type: Number,
-            required: true, // 1-based (Period 1, Period 2, ...)
-        },
+        period:  { type: Number, required: true },
         day: {
-            type: String,
+            type:     String,
             required: true,
-            enum: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+            enum:     ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'],
         },
-        subject: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Subject',
-            default: null, // null means free / unassigned
+        // One or more subjects occupying this slot. Normally length 1 (a
+        // regular mandatory subject). When this slot holds an elective
+        // bucket (e.g. Art + Music, both offered at the same period so
+        // students who picked either one attend at the same time), it
+        // holds every sibling subject in that bucket.
+        subjects: {
+            type:    [{ type: mongoose.Schema.Types.ObjectId, ref: 'Subject' }],
+            default: [],
         },
-        // Denormalised for quick reads without extra populate
-        label: {
-            type: String,
-            default: '', // e.g. "Lunch Break", "Assembly" for non-subject slots
+        // Set when `subjects` holds an elective bucket group; null for a
+        // single mandatory subject or an empty slot. Mirrors Subject.bucket.
+        bucket: {
+            type:    String,
+            default: null,
+            trim:    true,
         },
-        isBreak: {
-            type: Boolean,
-            default: false,
-        },
+        label:   { type: String, default: '' },
+        isBreak: { type: Boolean, default: false },
     },
     { _id: false }
 );
 
-// One period definition (its position + time window)
 const periodSchema = new mongoose.Schema(
     {
-        number: { type: Number, required: true },   // 1, 2, 3 …
-        startTime: { type: String, required: true }, // "08:00"
-        endTime:   { type: String, required: true }, // "08:40"
-        label:     { type: String, default: '' },    // optional override name e.g. "Lunch"
+        number:    { type: Number, required: true },
+        startTime: { type: String, required: true },
+        endTime:   { type: String, required: true },
+        label:     { type: String, default: '' },
         isBreak:   { type: Boolean, default: false },
     },
     { _id: false }
@@ -44,48 +43,63 @@ const periodSchema = new mongoose.Schema(
 
 const timetableSchema = new mongoose.Schema(
     {
-        course: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Course',
-            required: [true, 'Course is required'],
+        // ── Link to shared structure ──────────────────────────────────────────────
+        structureRef: {
+            type:    mongoose.Schema.Types.ObjectId,
+            ref:     'TimetableStructure',
+            default: null,
         },
-        // Academic year / term label, e.g. "2024-2025 Semester 1"
-        term: {
-            type: String,
-            required: [true, 'Term label is required'],
-            trim: true,
-        },
-        // Which days are active for this timetable
-        workingDays: {
-            type: [String],
-            enum: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
-            default: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-        },
-        // Period definitions (ordered by number)
-        periods: {
-            type: [periodSchema],
-            validate: {
-                validator: (v) => v.length > 0,
-                message: 'At least one period is required',
-            },
-        },
-        // The actual grid: one entry per (day × period)
-        slots: [slotSchema],
 
-        isActive: {
-            type: Boolean,
-            default: true,
+        // ── Grade-based ───────────────────────────────────────────────────────────
+        section: {
+            type:    mongoose.Schema.Types.ObjectId,
+            ref:     'Section',
+            default: null,
         },
+        grade: {
+            type:    mongoose.Schema.Types.ObjectId,
+            ref:     'Grade',
+            default: null,
+        },
+        academicYear: {
+            type:    mongoose.Schema.Types.ObjectId,
+            ref:     'AcademicYear',
+            default: null,
+        },
+        semester: {
+            type:    Number,
+            default: 1,
+            min:     1,
+            max:     4,
+        },
+
+        term: {
+            type:     String,
+            required: [true, 'Term label is required'],
+            trim:     true,
+        },
+        workingDays: {
+            type:    [String],
+            enum:    ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'],
+            default: ['Monday','Tuesday','Wednesday','Thursday','Friday'],
+        },
+        periods:  [periodSchema],
+        slots:    [slotSchema],
+        isActive: { type: Boolean, default: true },
         createdBy: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
+            ref:  'User',
         },
     },
     { timestamps: true }
 );
 
-// Only one active timetable per course+term combination
-timetableSchema.index({ course: 1, term: 1 }, { unique: true });
-timetableSchema.index({ course: 1, isActive: 1 });
+// One active timetable per section per semester
+timetableSchema.index(
+    { section: 1, semester: 1 },
+    { unique: true, sparse: true }
+);
+timetableSchema.index({ academicYear: 1 });
+timetableSchema.index({ grade: 1, semester: 1 });
 
 module.exports = mongoose.model('Timetable', timetableSchema);

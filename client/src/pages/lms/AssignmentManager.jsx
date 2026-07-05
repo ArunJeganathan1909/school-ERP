@@ -7,7 +7,6 @@ import {
   fetchAssignments,
   createAssignment,
 }                                            from '../../store/slices/assignmentSlice';
-import { fetchCourses }                      from '../../store/slices/courseSlice';
 import api                                   from '../../api/axios';
 
 /* ─────────────────────────────────────────────
@@ -17,8 +16,8 @@ const EMPTY = {
   title:               '',
   description:         '',
   instructions:        '',
-  course:              '',
   subject:             '',
+  section:             '', // optional — pin to one section, blank = all sections
   dueDate:             '',
   totalMarks:          100,
   passingMarks:        40,
@@ -580,7 +579,6 @@ function SubmissionsModal({ assignment, onClose }) {
 export default function AssignmentManager() {
   const dispatch = useDispatch();
   const { list: assignments, loading } = useSelector((s) => s.assignments);
-  const { list: courses }              = useSelector((s) => s.courses);
 
   const [showForm,       setShowForm]       = useState(false);
   const [editItem,       setEditItem]       = useState(null);
@@ -590,12 +588,11 @@ export default function AssignmentManager() {
   const [deletingId,     setDeletingId]     = useState(null);
   const [submissionsFor, setSubmissionsFor] = useState(null);
 
-  const [allSubjects,      setAllSubjects]      = useState([]);
-  const [subjectsLoading,  setSubjectsLoading]  = useState(false);
-  const [filteredSubjects, setFilteredSubjects] = useState([]);
+  // mySubjects: [{ subject, sections: [...] }] — what this teacher is assigned to teach
+  const [mySubjects,      setMySubjects]      = useState([]);
+  const [subjectsLoading, setSubjectsLoading] = useState(false);
 
   useEffect(() => {
-    dispatch(fetchCourses({ limit: 100 }));
     dispatch(fetchAssignments({}));
   }, [dispatch]);
 
@@ -604,37 +601,26 @@ export default function AssignmentManager() {
       setSubjectsLoading(true);
       try {
         const { data } = await api.get('/assignments/teacher/subjects');
-        setAllSubjects(data.subjects || []);
-      } catch { setAllSubjects([]); }
+        setMySubjects(data.subjects || []);
+      } catch { setMySubjects([]); }
       setSubjectsLoading(false);
     };
     load();
   }, []);
 
-  useEffect(() => {
-    if (!form.course) { setFilteredSubjects(allSubjects); return; }
-    const filtered = allSubjects.filter(
-        (s) => String(s.course?._id || s.course) === String(form.course)
-    );
-    setFilteredSubjects(filtered);
-    const stillValid = filtered.some((s) => s._id === form.subject);
-    if (!stillValid) setForm((f) => ({ ...f, subject: '' }));
-  }, [form.course, allSubjects]);
+  // Sections available for the subject currently selected in the form
+  const sectionsForFormSubject = form.subject
+      ? mySubjects.find((g) => g.subject?._id === form.subject)?.sections || []
+      : [];
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setForm((f) => ({ ...f, [name]: type === 'checkbox' ? checked : value }));
   };
 
+  // Reset section whenever the subject changes (different subjects → different section lists)
   const handleSubjectChange = (e) => {
-    const subjectId = e.target.value;
-    const subject   = allSubjects.find((s) => s._id === subjectId);
-    if (subject) {
-      const courseId = subject.course?._id || subject.course;
-      setForm((f) => ({ ...f, subject: subjectId, course: courseId ? String(courseId) : f.course }));
-    } else {
-      setForm((f) => ({ ...f, subject: '' }));
-    }
+    setForm((f) => ({ ...f, subject: e.target.value, section: '' }));
   };
 
   const openCreate = () => { setEditItem(null); setForm(EMPTY); setFormError(''); setShowForm(true); };
@@ -645,8 +631,8 @@ export default function AssignmentManager() {
       title:               a.title               || '',
       description:         a.description         || '',
       instructions:        a.instructions        || '',
-      course:              String(a.course?._id  || a.course  || ''),
       subject:             String(a.subject?._id || a.subject || ''),
+      section:             String(a.section?._id || a.section || ''),
       dueDate:             a.dueDate ? new Date(a.dueDate).toISOString().slice(0, 16) : '',
       totalMarks:          a.totalMarks          ?? 100,
       passingMarks:        a.passingMarks         ?? 40,
@@ -662,9 +648,9 @@ export default function AssignmentManager() {
     e.preventDefault();
     setFormError('');
     if (!form.title.trim()) { setFormError('Title is required.');       return; }
-    if (!form.course)        { setFormError('Please select a course.'); return; }
+    if (!form.subject)       { setFormError('Please select a subject.'); return; }
     if (!form.dueDate)       { setFormError('Due date is required.');   return; }
-    const payload = { ...form, subject: form.subject && form.subject !== '' ? form.subject : null };
+    const payload = { ...form, section: form.section && form.section !== '' ? form.section : null };
     setSaving(true);
     try {
       if (editItem) {
@@ -691,13 +677,10 @@ export default function AssignmentManager() {
   };
 
   const subjectPlaceholder = useCallback(() => {
-    if (subjectsLoading)                              return 'Loading your subjects…';
-    if (allSubjects.length === 0)                     return 'No subjects assigned to you yet';
-    if (form.course && filteredSubjects.length === 0) return 'No subjects for this course';
-    return 'Select subject (optional)';
-  }, [subjectsLoading, allSubjects, form.course, filteredSubjects]);
-
-  const subjectsToShow = form.course ? filteredSubjects : allSubjects;
+    if (subjectsLoading)         return 'Loading your subjects…';
+    if (mySubjects.length === 0) return 'No subjects assigned to you yet';
+    return 'Select subject';
+  }, [subjectsLoading, mySubjects]);
 
   return (
       <div className="app-shell">
@@ -755,7 +738,7 @@ export default function AssignmentManager() {
                     <tr>
                       <th>Title</th>
                       <th>Subject</th>
-                      <th>Course</th>
+                      <th>Section</th>
                       <th>Due date</th>
                       <th>Marks</th>
                       <th>File</th>
@@ -780,7 +763,7 @@ export default function AssignmentManager() {
                           </td>
 
                           <td style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
-                            {a.course?.title || '—'}
+                            {a.section?.name || <span style={{ color: 'var(--color-text-muted)' }}>All sections</span>}
                           </td>
 
                           <td>
@@ -887,45 +870,42 @@ export default function AssignmentManager() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">
-                      Subject
-                      <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginLeft: 8, fontWeight: 400 }}>
-                    — selecting a subject auto-fills the course
-                  </span>
-                    </label>
+                    <label className="form-label">Subject *</label>
 
-                    {!subjectsLoading && allSubjects.length === 0 && (
+                    {!subjectsLoading && mySubjects.length === 0 && (
                         <div className="alert alert-info" style={{ marginBottom: 'var(--space-sm)', fontSize: '0.8125rem' }}>
-                          ⚠ No subjects assigned to you. Ask your admin to assign subjects.
-                        </div>
-                    )}
-                    {form.course && !subjectsLoading && filteredSubjects.length === 0 && allSubjects.length > 0 && (
-                        <div className="alert alert-info" style={{ marginBottom: 'var(--space-sm)', fontSize: '0.8125rem' }}>
-                          ⚠ No subjects assigned to you for this course.
+                          ⚠ No subjects assigned to you. Ask your admin to assign you to a section.
                         </div>
                     )}
 
-                    <select className="form-input" name="subject" value={form.subject} onChange={handleSubjectChange} disabled={subjectsLoading}>
+                    <select className="form-input" name="subject" value={form.subject} onChange={handleSubjectChange} disabled={subjectsLoading} required>
                       <option value="">{subjectPlaceholder()}</option>
-                      {subjectsToShow.map((s) => (
-                          <option key={s._id} value={s._id}>
-                            {s.name} — {s.code}{s.course?.title ? ` (${s.course.title})` : ''}
-                          </option>
-                      ))}
+                      {mySubjects
+                          .filter((g) => g.subject)
+                          .map(({ subject }) => (
+                              <option key={subject._id} value={subject._id}>
+                                {subject.name} — {subject.code}
+                              </option>
+                          ))}
                     </select>
-                    {form.subject && <p style={{ fontSize: '0.75rem', color: '#059669', marginTop: 4 }}>✓ Subject selected</p>}
                   </div>
 
                   <div className="form-row">
                     <div className="form-group">
                       <label className="form-label">
-                        Course *
-                        {form.course && form.subject && <span style={{ fontSize: '0.7rem', color: '#059669', marginLeft: 6, fontWeight: 400 }}>(auto-filled)</span>}
+                        Section <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 400 }}>(optional)</span>
                       </label>
-                      <select className="form-input" name="course" value={form.course} onChange={handleChange} required>
-                        <option value="">Select course</option>
-                        {courses.map((c) => <option key={c._id} value={c._id}>{c.title}</option>)}
+                      <select className="form-input" name="section" value={form.section} onChange={handleChange} disabled={!form.subject}>
+                        <option value="">All sections you teach for this subject</option>
+                        {sectionsForFormSubject.map((sec) => (
+                            <option key={sec._id} value={sec._id}>
+                              {sec.grade?.gradeNumber}{sec.name}{sec.grade?.stream && sec.grade.stream !== 'none' ? ` (${sec.grade.stream})` : ''}
+                            </option>
+                        ))}
                       </select>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                        Leave blank to publish this assignment to every section you teach for this subject.
+                      </p>
                     </div>
                     <div className="form-group">
                       <label className="form-label">Due date *</label>

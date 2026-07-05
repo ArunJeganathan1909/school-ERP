@@ -1,67 +1,154 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import {
-    fetchTimetables,
-    fetchTimetable,
-    createTimetable,
-    updateTimetable,
-    updateSlot,
-    deleteTimetable,
-    clearTimetableError,
-    clearCurrentTimetable,
-} from '../../store/slices/timetableSlice';
-import { fetchCourses } from '../../store/slices/courseSlice';
-import api from '../../api/axios';
 import Sidebar from '../../components/Sidebar';
 import NotificationBell from '../../components/NotificationBell';
+import {
+    fetchTimetables, fetchTimetable, createTimetable,
+    updateTimetable, updateSlot, deleteTimetable,
+    fetchTimetableByTeacher,
+    clearTimetableError, clearCurrentTimetable, clearLastSync, clearTeacherView,
+} from '../../store/slices/timetableSlice';
+import {
+    fetchStructures, createStructure, updateStructure, deleteStructure,
+} from '../../store/slices/timetableStructureSlice';
+import { fetchAcademicYears } from '../../store/slices/academicYearSlice';
+import { fetchGrades } from '../../store/slices/gradeSlice';
+import { fetchSections } from '../../store/slices/sectionSlice';
+import api from '../../api/axios';
+import './TimetableManager.css';
 
-const ALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-const DEFAULT_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const ALL_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const DAY_SHORT = { Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed', Thursday: 'Thu', Friday: 'Fri', Saturday: 'Sat', Sunday: 'Sun' };
+const emptyPeriod = (num) => ({ number: num, startTime: '07:30', endTime: '08:10', label: '', isBreak: false });
 
-const emptyPeriod = () => ({ number: 1, startTime: '08:00', endTime: '08:40', label: '', isBreak: false });
+// Downloads a PDF blob response from the API and triggers a browser save.
+async function downloadPdf(url, filename) {
+    const response = await api.get(url, { responseType: 'blob' });
+    const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(blobUrl);
+}
 
 export default function TimetableManager() {
     const dispatch = useDispatch();
-    const { list, current, loading, error } = useSelector((s) => s.timetables);
-    const { list: courses } = useSelector((s) => s.courses);
-    const [subjects, setSubjects] = useState([]);
+    const { list, current, loading, error, lastSync, teacherView, teacherViewLoading } = useSelector((s) => s.timetables);
+    const { list: structures } = useSelector((s) => s.timetableStructures);
+    const { list: years }    = useSelector((s) => s.academicYears);
+    const { list: grades }   = useSelector((s) => s.grades);
+    const { list: sections } = useSelector((s) => s.sections);
 
-    const [view, setView] = useState('list'); // 'list' | 'create' | 'edit'
+    // Main view: 'structures' | 'list' | 'editor' | 'teachers' | 'teacherView'
+    const [view, setView] = useState('structures');
+
+    // ── By-teacher admin views ────────────────────────────────────────────────
+    const [teachers,        setTeachers]        = useState([]);
+    const [teachersLoading, setTeachersLoading] = useState(false);
+    const [teacherSearch,   setTeacherSearch]   = useState('');
+
+    // PDF download busy-state — keyed so multiple buttons don't fight over one flag
+    const [downloadingId, setDownloadingId] = useState(null); // section timetable id or teacher id currently downloading
+    const [downloadingAllSections, setDownloadingAllSections] = useState(false);
+    const [downloadingAllTeachers, setDownloadingAllTeachers] = useState(false);
+    const [downloadError, setDownloadError] = useState('');
+
+    // Filters
+    const [filterYear,    setFilterYear]    = useState('');
+    const [filterGrade,   setFilterGrade]   = useState('');
+    const [filterSection, setFilterSection] = useState('');
+    const [filterSemester, setFilterSemester] = useState('');
+
+    // Structure form
+    const [showStructureModal, setShowStructureModal] = useState(false);
+    const [editStructure, setEditStructure] = useState(null);
+    const [structureForm, setStructureForm] = useState({
+        academicYear: '', semester: 1, name: '',
+        workingDays: ['Monday','Tuesday','Wednesday','Thursday','Friday'],
+        periods: [emptyPeriod(1)],
+    });
+    const [structureSaving, setStructureSaving] = useState(false);
+    const [structureError,  setStructureError]  = useState('');
+
+    // Timetable create form
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [createForm, setCreateForm] = useState({
+        structureRef: '', section: '', grade: '', academicYear: '', semester: 1, term: '',
+    });
+    const [createSaving, setCreateSaving] = useState(false);
+
+    // Slot assignment
+    const [slotModal,       setSlotModal]       = useState(null);
+    const [freeSubjects,    setFreeSubjects]     = useState([]);
+    const [busySubjects,    setBusySubjects]     = useState([]);
+    const [subjectsLoading, setSubjectsLoading] = useState(false);
+    const [conflictError,   setConflictError]   = useState('');
+    const [slotSaving,      setSlotSaving]      = useState(false);
+    const [applyToGrade,    setApplyToGrade]    = useState(true); // sync elective buckets across the grade's sections
+
     const [deleteTarget, setDeleteTarget] = useState(null);
 
-    // Create form state
-    const [form, setForm] = useState({
-        course: '',
-        term: '',
-        workingDays: DEFAULT_DAYS,
-        periods: [emptyPeriod()],
-    });
-
-    // Slot editor modal state
-    const [slotModal, setSlotModal] = useState(null); // { day, period, currentSubject }
-
     useEffect(() => {
+        dispatch(fetchAcademicYears());
+        dispatch(fetchStructures());
         dispatch(fetchTimetables());
-        dispatch(fetchCourses());
-        api.get('/subjects?limit=1000')
-            .then(({ data }) => setSubjects(data.subjects || []))
-            .catch(() => setSubjects([]));
     }, [dispatch]);
 
-    // ── helpers ──
-    const courseLabel = (courseField) => {
-        if (!courseField) return '—';
-        if (typeof courseField === 'object') return `${courseField.title} (${courseField.code})`;
-        const c = courses.find((c) => c._id === courseField);
-        return c ? `${c.title} (${c.code})` : '—';
+    useEffect(() => {
+        if (filterYear) {
+            dispatch(fetchGrades({ academicYear: filterYear }));
+            dispatch(fetchSections({ academicYear: filterYear }));
+            dispatch(fetchStructures({ academicYear: filterYear }));
+        }
+    }, [dispatch, filterYear]);
+
+    useEffect(() => {
+        if (filterGrade) dispatch(fetchSections({ grade: filterGrade, academicYear: filterYear }));
+    }, [dispatch, filterGrade, filterYear]);
+
+    useEffect(() => {
+        const params = {};
+        if (filterYear)     params.academicYear = filterYear;
+        if (filterSection)  params.section      = filterSection;
+        if (filterSemester) params.semester     = filterSemester;
+        dispatch(fetchTimetables(params));
+    }, [dispatch, filterYear, filterSection, filterSemester]);
+
+    // ── Structure form helpers ────────────────────────────────────────────────
+
+    const openCreateStructure = () => {
+        setEditStructure(null);
+        setStructureForm({ academicYear: filterYear || '', semester: 1, name: '', workingDays: ['Monday','Tuesday','Wednesday','Thursday','Friday'], periods: [emptyPeriod(1)] });
+        setStructureError('');
+        setShowStructureModal(true);
     };
 
-    const subjectsForCourse = (courseId) =>
-        subjects.filter((s) => String(s.course?._id || s.course) === String(courseId));
+    const openEditStructure = (s) => {
+        setEditStructure(s);
+        setStructureForm({
+            academicYear: s.academicYear?._id || s.academicYear || '',
+            semester:     s.semester,
+            name:         s.name || '',
+            workingDays:  [...s.workingDays],
+            periods:      s.periods.map((p) => ({ ...p })),
+        });
+        setStructureError('');
+        setShowStructureModal(true);
+    };
 
-    // ── create form handlers ──
+    const toggleDay = (day) => {
+        setStructureForm((f) => {
+            const has = f.workingDays.includes(day);
+            return { ...f, workingDays: has ? f.workingDays.filter((d) => d !== day) : [...f.workingDays, day] };
+        });
+    };
+
     const handlePeriodChange = (idx, field, value) => {
-        setForm((f) => {
+        setStructureForm((f) => {
             const periods = [...f.periods];
             periods[idx] = { ...periods[idx], [field]: field === 'isBreak' ? value : value };
             return { ...f, periods };
@@ -69,71 +156,136 @@ export default function TimetableManager() {
     };
 
     const addPeriod = () => {
-        setForm((f) => ({
+        setStructureForm((f) => ({
             ...f,
-            periods: [...f.periods, { ...emptyPeriod(), number: f.periods.length + 1 }],
+            periods: [...f.periods, emptyPeriod(f.periods.length + 1)],
         }));
     };
 
     const removePeriod = (idx) => {
-        setForm((f) => ({ ...f, periods: f.periods.filter((_, i) => i !== idx) }));
-    };
-
-    const toggleDay = (day) => {
-        setForm((f) => {
-            const has = f.workingDays.includes(day);
-            return {
-                ...f,
-                workingDays: has ? f.workingDays.filter((d) => d !== day) : [...f.workingDays, day],
-            };
-        });
-    };
-
-    const resetForm = () => {
-        setForm({ course: '', term: '', workingDays: DEFAULT_DAYS, periods: [emptyPeriod()] });
-    };
-
-    const handleCreateSubmit = async (e) => {
-        e.preventDefault();
-        dispatch(clearTimetableError());
-
-        const periods = form.periods.map((p, i) => ({
-            ...p,
-            number: i + 1,
-            startTime: p.startTime,
-            endTime: p.endTime,
+        setStructureForm((f) => ({
+            ...f,
+            periods: f.periods.filter((_, i) => i !== idx).map((p, i) => ({ ...p, number: i + 1 })),
         }));
+    };
 
-        const result = await dispatch(
-            createTimetable({
-                course: form.course,
-                term: form.term,
-                workingDays: form.workingDays,
-                periods,
-            })
-        );
+    const handleSaveStructure = async (e) => {
+        e.preventDefault();
+        setStructureSaving(true);
+        setStructureError('');
+        const payload = {
+            ...structureForm,
+            periods: structureForm.periods.map((p, i) => ({ ...p, number: i + 1 })),
+        };
+        const result = editStructure
+            ? await dispatch(updateStructure({ id: editStructure._id, data: payload }))
+            : await dispatch(createStructure(payload));
+        setStructureSaving(false);
+        if (result.error) { setStructureError(result.payload || 'Save failed'); return; }
+        setShowStructureModal(false);
+    };
 
+    const handleDeleteStructure = async (s) => {
+        if (!window.confirm(`Delete structure "${s.name || s.academicYear?.name}"?`)) return;
+        dispatch(deleteStructure(s._id));
+    };
+
+    // ── Timetable create helpers ──────────────────────────────────────────────
+
+    const openCreateTimetable = () => {
+        // Auto-fill from filters
+        const structure = structures.find((s) => (s.academicYear?._id || s.academicYear) === filterYear);
+        setCreateForm({
+            structureRef: structure?._id || '',
+            section:      filterSection || '',
+            grade:        filterGrade   || '',
+            academicYear: filterYear    || '',
+            semester:     structure?.semester || 1,
+            term:         '',
+        });
+        setShowCreateModal(true);
+    };
+
+    const handleCreateTimetable = async (e) => {
+        e.preventDefault();
+        setCreateSaving(true);
+        dispatch(clearTimetableError());
+        const result = await dispatch(createTimetable(createForm));
+        setCreateSaving(false);
         if (!result.error) {
-            resetForm();
-            setView('edit');
+            setShowCreateModal(false);
+            // Open the editor immediately
+            await dispatch(fetchTimetable(result.payload._id));
+            setView('editor');
         }
     };
 
-    // ── edit / grid view ──
+    // ── Grid editor helpers ───────────────────────────────────────────────────
+
     const openEditor = async (id) => {
         dispatch(clearTimetableError());
         await dispatch(fetchTimetable(id));
-        setView('edit');
+        setView('editor');
     };
 
     const backToList = () => {
         dispatch(clearCurrentTimetable());
         dispatch(clearTimetableError());
+        setConflictError('');
         setView('list');
     };
 
-    const handleToggleActive = (timetable) => {
-        dispatch(updateTimetable({ id: timetable._id, data: { isActive: !timetable.isActive } }));
+    const getSlot = (day, periodNumber) =>
+        current?.slots?.find((s) => s.day === day && s.period === periodNumber);
+
+    const openSlotModal = async (day, period) => {
+        if (period.isBreak || !current) return;
+        setConflictError('');
+        dispatch(clearLastSync());
+        const existingSlot = getSlot(day, period.number);
+        setSlotModal({
+            day,
+            period: period.number,
+            currentSubjectIds: existingSlot?.subjects?.map((s) => s._id) || [],
+            currentBucket: existingSlot?.bucket || null,
+        });
+        setApplyToGrade(true);
+        setSubjectsLoading(true);
+        setFreeSubjects([]);
+        setBusySubjects([]);
+        try {
+            const { data } = await api.get('/timetables/free-subjects', {
+                params: {
+                    sectionId:   current.section?._id || current.section,
+                    day,
+                    period:      period.number,
+                    academicYear: current.academicYear?._id || current.academicYear,
+                },
+            });
+            setFreeSubjects(data.subjects     || []);
+            setBusySubjects(data.busySubjects || []);
+        } catch { setFreeSubjects([]); setBusySubjects([]); }
+        setSubjectsLoading(false);
+    };
+
+    const handleAssignSubject = async (subjectId) => {
+        if (!current || !slotModal) return;
+        setSlotSaving(true);
+        setConflictError('');
+        const result = await dispatch(updateSlot({
+            id:       current._id,
+            day:      slotModal.day,
+            period:   slotModal.period,
+            subjectId: subjectId || null,
+            applyToGrade,
+        }));
+        setSlotSaving(false);
+        if (result.error) {
+            // 409 conflict — surface the teacher conflict message
+            setConflictError(result.payload || 'Slot update failed');
+            return;
+        }
+        setSlotModal(null);
     };
 
     const confirmDelete = async () => {
@@ -143,401 +295,637 @@ export default function TimetableManager() {
         if (current?._id === deleteTarget._id) backToList();
     };
 
-    // ── slot grid helpers ──
-    const getSlot = (day, periodNumber) =>
-        current?.slots?.find((s) => s.day === day && s.period === periodNumber);
+    // ── By-teacher helpers ────────────────────────────────────────────────────
 
-    const openSlotModal = (day, period) => {
-        if (period.isBreak) return;
-        const slot = getSlot(day, period.number);
-        setSlotModal({
-            day,
-            period: period.number,
-            currentSubject: slot?.subject?._id || slot?.subject || '',
+    const openTeachersView = async () => {
+        dispatch(clearTimetableError());
+        setView('teachers');
+        if (teachers.length === 0) {
+            setTeachersLoading(true);
+            try {
+                const { data } = await api.get('/users', { params: { role: 'teacher', limit: 200 } });
+                setTeachers(data.users || []);
+            } catch {
+                setTeachers([]);
+            }
+            setTeachersLoading(false);
+        }
+    };
+
+    const openTeacherSchedule = async (teacherId) => {
+        dispatch(clearTimetableError());
+        setView('teacherView');
+        await dispatch(fetchTimetableByTeacher(teacherId));
+    };
+
+    const backFromTeacherSchedule = () => {
+        dispatch(clearTeacherView());
+        dispatch(clearTimetableError());
+        setView('teachers');
+    };
+
+    // Merges a teacher's per-section timetables into one weekly grid —
+    // mirrors the same merge the teacher sees on their own schedule page.
+    const mergedTeacherGrid = useMemo(() => {
+        const timetables = teacherView?.timetables;
+        if (!timetables?.length) return null;
+
+        const workingDaysSet  = new Set();
+        const periodsByNumber = new Map();
+        const cellMap         = new Map();
+
+        timetables.forEach((tt) => {
+            tt.workingDays?.forEach((d) => workingDaysSet.add(d));
+            tt.periods?.forEach((p) => { if (!periodsByNumber.has(p.number)) periodsByNumber.set(p.number, p); });
+
+            const myIds = tt.myTeacherSubjectIds || [];
+            const sectionLabel = tt.section ? `${tt.grade?.gradeNumber || ''}${tt.section?.name}` : tt.term;
+
+            tt.slots?.forEach((slot) => {
+                if (!slot.isMyClass) return;
+                const mySubjects = (slot.subjects || []).filter((s) => myIds.includes(String(s._id)));
+                if (mySubjects.length === 0) return;
+
+                const key = `${slot.day}|${slot.period}`;
+                const entries = cellMap.get(key) || [];
+                mySubjects.forEach((subject) => entries.push({ subject, sectionLabel, bucket: slot.bucket }));
+                cellMap.set(key, entries);
+            });
         });
+
+        return {
+            workingDays: DAY_ORDER.filter((d) => workingDaysSet.has(d)),
+            periods:     [...periodsByNumber.values()].sort((a, b) => a.number - b.number),
+            cellMap,
+        };
+    }, [teacherView]);
+
+    const getMergedEntries = (day, periodNumber) => mergedTeacherGrid?.cellMap.get(`${day}|${periodNumber}`) || [];
+
+    // ── PDF download helpers ──────────────────────────────────────────────────
+
+    const handleDownloadSectionPdf = async (tt) => {
+        setDownloadError('');
+        setDownloadingId(tt._id);
+        try {
+            const label = `Grade${tt.grade?.gradeNumber || ''}${tt.section?.name || ''}`.replace(/\s+/g, '');
+            await downloadPdf(`/timetables/${tt._id}/pdf`, `timetable-${label}.pdf`);
+        } catch {
+            setDownloadError('Failed to download PDF');
+        }
+        setDownloadingId(null);
     };
 
-    const handleAssignSubject = async (subjectId) => {
-        if (!slotModal || !current) return;
-        await dispatch(
-            updateSlot({
-                id: current._id,
-                day: slotModal.day,
-                period: slotModal.period,
-                subjectId: subjectId || null,
-            })
+    const handleDownloadAllSectionsPdf = async () => {
+        setDownloadError('');
+        setDownloadingAllSections(true);
+        try {
+            const params = new URLSearchParams();
+            if (filterYear)    params.set('academicYear', filterYear);
+            if (filterGrade)   params.set('grade', filterGrade);
+            if (filterSemester) params.set('semester', filterSemester);
+            const qs = params.toString();
+            await downloadPdf(`/timetables/download-all/sections${qs ? `?${qs}` : ''}`, 'all-section-timetables.pdf');
+        } catch {
+            setDownloadError('Failed to download combined PDF');
+        }
+        setDownloadingAllSections(false);
+    };
+
+    const handleDownloadTeacherPdf = async (teacher) => {
+        setDownloadError('');
+        setDownloadingId(teacher._id);
+        try {
+            await downloadPdf(`/timetables/teacher/${teacher._id}/pdf`, `teaching-schedule-${(teacher.name || 'teacher').replace(/\s+/g, '')}.pdf`);
+        } catch {
+            setDownloadError('Failed to download PDF — this teacher may have no classes assigned yet');
+        }
+        setDownloadingId(null);
+    };
+
+    const handleDownloadAllTeachersPdf = async () => {
+        setDownloadError('');
+        setDownloadingAllTeachers(true);
+        try {
+            await downloadPdf('/timetables/download-all/teachers', 'all-teacher-schedules.pdf');
+        } catch {
+            setDownloadError('Failed to download combined PDF');
+        }
+        setDownloadingAllTeachers(false);
+    };
+
+    const filteredTeachers = teachers.filter((t) =>
+        !teacherSearch || t.name?.toLowerCase().includes(teacherSearch.toLowerCase()) || t.email?.toLowerCase().includes(teacherSearch.toLowerCase())
+    );
+
+    const filteredGrades   = filterYear  ? grades.filter((g) => (g.academicYear?._id || g.academicYear) === filterYear) : grades;
+    const filteredSections = filterGrade ? sections.filter((s) => (s.grade?._id || s.grade) === filterGrade) : sections;
+    const yearStructures   = filterYear  ? structures.filter((s) => (s.academicYear?._id || s.academicYear) === filterYear) : structures;
+
+    const activeYear = years.find((y) => y.isActive);
+
+    // ── STRUCTURES VIEW ───────────────────────────────────────────────────────
+
+    if (view === 'structures') {
+        return (
+            <div className="app-shell">
+                <Sidebar />
+                <div className="main-content">
+                    <div className="topbar">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+                            <h1 className="topbar__title">Timetable management</h1>
+                        </div>
+                        <div className="topbar__right">
+                            <NotificationBell />
+                            <button className="btn btn-outline" onClick={() => setView('list')}>View timetables →</button>
+                            <button className="btn btn-primary" onClick={openCreateStructure}>+ New structure</button>
+                        </div>
+                    </div>
+
+                    <div className="page-body">
+                        <div className="tt-intro-banner">
+                            <div className="tt-intro-banner__step active"><span>1</span><p>Create structure</p></div>
+                            <div className="tt-intro-banner__arrow">→</div>
+                            <div className="tt-intro-banner__step"><span>2</span><p>Create section timetables</p></div>
+                            <div className="tt-intro-banner__arrow">→</div>
+                            <div className="tt-intro-banner__step"><span>3</span><p>Fill subject grid</p></div>
+                        </div>
+
+                        <p style={{ color: 'var(--color-text-secondary)', marginBottom: 'var(--space-lg)', fontSize: '0.9375rem' }}>
+                            First, define the shared period structure for each academic year. All section timetables inherit these working days and period times — you only define them once.
+                        </p>
+
+                        {/* Filter */}
+                        <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-lg)' }}>
+                            <select className="form-input" style={{ width: 220 }} value={filterYear} onChange={(e) => setFilterYear(e.target.value)}>
+                                <option value="">All academic years</option>
+                                {years.map((y) => <option key={y._id} value={y._id}>{y.name}{y.isActive ? ' ✓' : ''}</option>)}
+                            </select>
+                        </div>
+
+                        {yearStructures.length === 0 ? (
+                            <div className="empty-state">
+                                <div className="empty-state__icon">📋</div>
+                                <p>No timetable structures yet.{activeYear ? ` Create one for ${activeYear.name}.` : ''}</p>
+                                <button className="btn btn-primary" style={{ marginTop: 'var(--space-md)' }} onClick={openCreateStructure}>Create first structure</button>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+                                {yearStructures.map((s) => (
+                                    <div key={s._id} className="tt-structure-card card">
+                                        <div className="tt-structure-card__header">
+                                            <div>
+                                                <div className="tt-structure-card__name">
+                                                    {s.name || `${s.academicYear?.name} — Semester ${s.semester}`}
+                                                </div>
+                                                <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                                                    {s.academicYear?.name} · Semester {s.semester} · {s.workingDays.length} days · {s.periods.length} periods
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
+                                                <button className="btn btn-outline btn-sm" onClick={() => openEditStructure(s)}>Edit</button>
+                                                <button className="btn btn-danger btn-sm" onClick={() => handleDeleteStructure(s)}>Del</button>
+                                            </div>
+                                        </div>
+
+                                        {/* Working days chips */}
+                                        <div style={{ display: 'flex', gap: 'var(--space-xs)', flexWrap: 'wrap', marginBottom: 'var(--space-md)' }}>
+                                            {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((short, i) => {
+                                                const full = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][i];
+                                                return (
+                                                    <span key={full} style={{
+                                                        padding: '2px 10px', borderRadius: 'var(--radius-full)', fontSize: '0.8125rem', fontWeight: 600,
+                                                        background: s.workingDays.includes(full) ? 'var(--color-primary)' : 'var(--color-border)',
+                                                        color: s.workingDays.includes(full) ? '#fff' : 'var(--color-text-muted)',
+                                                    }}>{short}</span>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {/* Periods preview */}
+                                        <div style={{ display: 'flex', gap: 'var(--space-xs)', flexWrap: 'wrap' }}>
+                                            {s.periods.map((p) => (
+                                                <div key={p.number} style={{
+                                                    padding: '4px 10px', borderRadius: 'var(--radius-md)', fontSize: '0.75rem', fontWeight: 600,
+                                                    background: p.isBreak ? '#FEF3C7' : 'var(--color-primary-light)',
+                                                    color: p.isBreak ? '#92400E' : 'var(--color-primary)',
+                                                    border: `1px solid ${p.isBreak ? '#FDE68A' : 'rgba(79,70,229,0.2)'}`,
+                                                }}>
+                                                    {p.isBreak ? `☕ ${p.label || 'Break'}` : `P${p.number}`} {p.startTime}–{p.endTime}
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div style={{ marginTop: 'var(--space-md)', paddingTop: 'var(--space-md)', borderTop: '1px solid var(--color-border)' }}>
+                                            <button className="btn btn-primary btn-sm" onClick={() => { setView('list'); setFilterYear(s.academicYear?._id || s.academicYear || ''); }}>
+                                                Build section timetables →
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Structure modal */}
+                {showStructureModal && (
+                    <div className="modal-overlay" onClick={() => setShowStructureModal(false)}>
+                        <div className="modal" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
+                            <div className="modal__header">
+                                <h2 className="modal__title">{editStructure ? 'Edit structure' : 'New timetable structure'}</h2>
+                                <button className="btn btn-ghost btn-sm" onClick={() => setShowStructureModal(false)}>✕</button>
+                            </div>
+                            {structureError && <div className="alert alert-error" style={{ margin: '0 var(--space-lg) var(--space-sm)' }}>{structureError}</div>}
+                            <form className="modal__body" onSubmit={handleSaveStructure}>
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label className="form-label">Academic year *</label>
+                                        <select className="form-input" value={structureForm.academicYear} onChange={(e) => setStructureForm((f) => ({ ...f, academicYear: e.target.value }))} required>
+                                            <option value="">Select year</option>
+                                            {years.map((y) => <option key={y._id} value={y._id}>{y.name}{y.isActive ? ' ✓' : ''}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">Semester *</label>
+                                        <select className="form-input" value={structureForm.semester} onChange={(e) => setStructureForm((f) => ({ ...f, semester: Number(e.target.value) }))}>
+                                            {[1,2,3,4].map((n) => <option key={n} value={n}>Semester {n}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Structure name</label>
+                                    <input className="form-input" value={structureForm.name} onChange={(e) => setStructureForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. 2024-2025 Main Structure" />
+                                </div>
+
+                                {/* Working days */}
+                                <div className="form-group">
+                                    <label className="form-label">Working days</label>
+                                    <div style={{ display: 'flex', gap: 'var(--space-xs)', flexWrap: 'wrap' }}>
+                                        {ALL_DAYS.map((day) => (
+                                            <button key={day} type="button" className={`course-status-tab ${structureForm.workingDays.includes(day) ? 'active' : ''}`} onClick={() => toggleDay(day)}>
+                                                {day.slice(0, 3)}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Periods */}
+                                <div className="form-group">
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-sm)' }}>
+                                        <label className="form-label" style={{ margin: 0 }}>Periods</label>
+                                        <button type="button" className="btn btn-outline btn-sm" onClick={addPeriod}>+ Add period</button>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+                                        {structureForm.periods.map((period, idx) => (
+                                            <div key={idx} style={{ display: 'grid', gridTemplateColumns: '36px 1fr 1fr 1fr 100px auto', gap: 'var(--space-sm)', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: period.isBreak ? '#92400E' : 'var(--color-primary)', textAlign: 'center' }}>
+                          {period.isBreak ? '☕' : `P${idx + 1}`}
+                        </span>
+                                                <input className="form-input" type="time" value={period.startTime} onChange={(e) => handlePeriodChange(idx, 'startTime', e.target.value)} />
+                                                <input className="form-input" type="time" value={period.endTime}   onChange={(e) => handlePeriodChange(idx, 'endTime', e.target.value)} />
+                                                <input className="form-input" value={period.label} onChange={(e) => handlePeriodChange(idx, 'label', e.target.value)} placeholder="Label (opt.)" />
+                                                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.875rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                                    <input type="checkbox" checked={period.isBreak} onChange={(e) => handlePeriodChange(idx, 'isBreak', e.target.checked)} />
+                                                    Break
+                                                </label>
+                                                <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--color-error)' }} onClick={() => removePeriod(idx)} disabled={structureForm.periods.length === 1}>✕</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="modal__footer">
+                                    <button type="button" className="btn btn-ghost" onClick={() => setShowStructureModal(false)}>Cancel</button>
+                                    <button type="submit" className="btn btn-primary" disabled={structureSaving}>
+                                        {structureSaving ? <><span className="spinner" /> Saving…</> : editStructure ? 'Update' : 'Create structure'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
+            </div>
         );
-        setSlotModal(null);
-    };
+    }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // LIST VIEW
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── LIST VIEW ─────────────────────────────────────────────────────────────
+
     if (view === 'list') {
         return (
             <div className="app-shell">
                 <Sidebar />
                 <div className="main-content">
                     <div className="topbar">
-                        <h1 className="topbar__title">Timetable management</h1>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setView('structures')}>← Structures</button>
+                            <h1 className="topbar__title">Section timetables</h1>
+                        </div>
                         <div className="topbar__right">
                             <NotificationBell />
+                            <button className="btn btn-outline btn-sm" onClick={openTeachersView}>👥 By teacher</button>
+                            <button className="btn btn-secondary btn-sm" onClick={handleDownloadAllSectionsPdf} disabled={downloadingAllSections || list.length === 0}>
+                                {downloadingAllSections ? <span className="spinner" /> : '⬇ Download all'}
+                            </button>
+                            <button className="btn btn-primary" onClick={openCreateTimetable} disabled={yearStructures.length === 0}>
+                                + New timetable
+                            </button>
                         </div>
                     </div>
+
                     <div className="page-body">
-                        <div className="dashboard-welcome">
-                            <div className="dashboard-welcome__text">
-                                <h2>Timetable Manager</h2>
-                                <p>Create and manage class timetables for each course and term.</p>
+                        {downloadError && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{downloadError}</div>}
+                        {yearStructures.length === 0 && filterYear && (
+                            <div className="alert alert-info" style={{ marginBottom: 'var(--space-lg)' }}>
+                                No timetable structure found for this academic year. <button className="btn btn-ghost btn-sm" onClick={() => setView('structures')}>Create one first →</button>
                             </div>
-                            <button className="btn btn-primary" onClick={() => setView('create')}>
-                                + New Timetable
-                            </button>
+                        )}
+
+                        {/* Filters */}
+                        <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-lg)', flexWrap: 'wrap' }}>
+                            <select className="form-input" style={{ width: 200 }} value={filterYear} onChange={(e) => { setFilterYear(e.target.value); setFilterGrade(''); setFilterSection(''); }}>
+                                <option value="">All academic years</option>
+                                {years.map((y) => <option key={y._id} value={y._id}>{y.name}{y.isActive ? ' ✓' : ''}</option>)}
+                            </select>
+                            <select className="form-input" style={{ width: 200 }} value={filterGrade} onChange={(e) => { setFilterGrade(e.target.value); setFilterSection(''); }} disabled={!filterYear}>
+                                <option value="">All grades</option>
+                                {filteredGrades.sort((a, b) => a.gradeNumber - b.gradeNumber).map((g) => <option key={g._id} value={g._id}>{g.name}{g.stream !== 'none' ? ` (${g.stream})` : ''}</option>)}
+                            </select>
+                            <select className="form-input" style={{ width: 160 }} value={filterSection} onChange={(e) => setFilterSection(e.target.value)} disabled={!filterGrade}>
+                                <option value="">All sections</option>
+                                {filteredSections.map((s) => <option key={s._id} value={s._id}>Grade {s.grade?.gradeNumber}{s.name}</option>)}
+                            </select>
+                            <select className="form-input" style={{ width: 140 }} value={filterSemester} onChange={(e) => setFilterSemester(e.target.value)}>
+                                <option value="">All semesters</option>
+                                {[1,2,3,4].map((n) => <option key={n} value={n}>Semester {n}</option>)}
+                            </select>
                         </div>
 
                         {error && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{error}</div>}
 
-                        <div className="card">
-                            {loading ? (
-                                <p>Loading timetables…</p>
-                            ) : list.length === 0 ? (
-                                <p style={{ color: 'var(--color-text-secondary)' }}>No timetables created yet.</p>
-                            ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-                                    {list.map((tt) => (
-                                        <div
-                                            key={tt._id}
-                                            className="quick-link-btn"
-                                            style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)' }}
-                                        >
-                                            <div className="quick-link-btn__icon" style={{ background: 'var(--color-primary-light)' }}>🗓</div>
-                                            <div className="quick-link-btn__label">
-                                                <div style={{ fontWeight: 600 }}>{courseLabel(tt.course)}</div>
-                                                <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
-                                                    {tt.term} · {tt.workingDays.length} days · {tt.periods.length} periods
-                                                </div>
-                                            </div>
-                                            <span className={`badge ${tt.isActive ? 'badge-success' : 'badge-error'}`}>
-                                        {tt.isActive ? 'Active' : 'Inactive'}
-                                    </span>
-                                            <button className="btn btn-outline btn-sm" onClick={() => handleToggleActive(tt)}>
-                                                {tt.isActive ? 'Deactivate' : 'Activate'}
-                                            </button>
-                                            <button className="btn btn-ghost btn-sm" onClick={() => openEditor(tt._id)}>
-                                                Edit
-                                            </button>
-                                            <button className="btn btn-danger btn-sm" onClick={() => setDeleteTarget(tt)}>
-                                                Delete
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Delete confirmation modal */}
-                        {deleteTarget && (
-                            <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
-                                <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
-                                    <div className="modal__header">
-                                        <div className="modal__title">Delete timetable?</div>
-                                    </div>
-                                    <div className="modal__body">
-                                        <p>
-                                            This will permanently delete the timetable for{' '}
-                                            <strong>{courseLabel(deleteTarget.course)}</strong> ({deleteTarget.term}).
-                                            This action cannot be undone.
-                                        </p>
-                                    </div>
-                                    <div className="modal__footer">
-                                        <button className="btn btn-ghost" onClick={() => setDeleteTarget(null)}>Cancel</button>
-                                        <button className="btn btn-danger" onClick={confirmDelete}>Delete</button>
-                                    </div>
-                                </div>
+                        {loading && list.length === 0 ? (
+                            <div className="empty-state"><div className="spinner" style={{ width: 36, height: 36, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} /></div>
+                        ) : list.length === 0 ? (
+                            <div className="empty-state">
+                                <div className="empty-state__icon">🗓</div>
+                                <p>No section timetables yet.</p>
+                                {yearStructures.length > 0 && <button className="btn btn-primary" style={{ marginTop: 'var(--space-md)' }} onClick={openCreateTimetable}>Create first section timetable</button>}
+                            </div>
+                        ) : (
+                            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                                <table className="data-table">
+                                    <thead>
+                                    <tr>
+                                        <th>Section</th>
+                                        <th>Term</th>
+                                        <th>Semester</th>
+                                        <th>Structure</th>
+                                        <th>Slots filled</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {list.map((tt) => {
+                                        const filledSlots = tt.slots?.filter((s) => s.subjects?.length && !s.isBreak).length || 0;
+                                        const totalSlots  = tt.slots?.filter((s) => !s.isBreak).length || 0;
+                                        return (
+                                            <tr key={tt._id}>
+                                                <td style={{ fontWeight: 600 }}>
+                                                    Grade {tt.grade?.gradeNumber}{tt.section?.name}
+                                                    {tt.grade?.stream !== 'none' && <span style={{ color: 'var(--color-text-muted)', fontWeight: 400, fontSize: '0.8125rem' }}> · {tt.grade?.stream}</span>}
+                                                </td>
+                                                <td style={{ color: 'var(--color-text-secondary)' }}>{tt.term}</td>
+                                                <td style={{ color: 'var(--color-text-secondary)' }}>Semester {tt.semester}</td>
+                                                <td style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>{tt.structureRef?.name || '—'}</td>
+                                                <td>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+                                                        <div style={{ flex: 1, height: 6, background: 'var(--color-border)', borderRadius: 'var(--radius-full)', overflow: 'hidden', maxWidth: 80 }}>
+                                                            <div style={{ height: '100%', width: totalSlots > 0 ? `${Math.round(filledSlots / totalSlots * 100)}%` : '0%', background: 'var(--color-primary)', borderRadius: 'var(--radius-full)' }} />
+                                                        </div>
+                                                        <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>{filledSlots}/{totalSlots}</span>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span className={`badge ${tt.isActive ? 'badge-success' : 'badge-error'}`}>{tt.isActive ? 'Active' : 'Inactive'}</span>
+                                                </td>
+                                                <td>
+                                                    <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
+                                                        <button className="btn btn-primary btn-sm" onClick={() => openEditor(tt._id)}>Edit grid</button>
+                                                        <button className="btn btn-outline btn-sm" onClick={() => handleDownloadSectionPdf(tt)} disabled={downloadingId === tt._id}>
+                                                            {downloadingId === tt._id ? <span className="spinner" /> : '⬇ PDF'}
+                                                        </button>
+                                                        <button className="btn btn-outline btn-sm" onClick={() => dispatch(updateTimetable({ id: tt._id, data: { isActive: !tt.isActive } }))}>
+                                                            {tt.isActive ? 'Deactivate' : 'Activate'}
+                                                        </button>
+                                                        <button className="btn btn-danger btn-sm" onClick={() => setDeleteTarget(tt)}>Del</button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                    </tbody>
+                                </table>
                             </div>
                         )}
                     </div>
                 </div>
-            </div>
-        );
-    }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // CREATE VIEW
-    // ─────────────────────────────────────────────────────────────────────────
-    if (view === 'create') {
-        return (
-            <div className="app-shell">
-                <Sidebar />
-                <div className="main-content">
-                    <div className="topbar">
-                        <h1 className="topbar__title">Timetable management</h1>
-                        <div className="topbar__right">
-                            <NotificationBell />
-                        </div>
-                    </div>
-                    <div className="page-body">
-                        <div className="dashboard-welcome">
-                            <div className="dashboard-welcome__text">
-                                <h2>New Timetable</h2>
-                                <p>Define the course, term, working days, and period structure.</p>
+                {/* Create timetable modal */}
+                {showCreateModal && (
+                    <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+                        <div className="modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+                            <div className="modal__header">
+                                <h2 className="modal__title">New section timetable</h2>
+                                <button className="btn btn-ghost btn-sm" onClick={() => setShowCreateModal(false)}>✕</button>
                             </div>
-                            <button className="btn btn-ghost" onClick={() => { resetForm(); setView('list'); }}>
-                                ← Back to list
-                            </button>
-                        </div>
-
-                        {error && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{error}</div>}
-
-                        <form className="card" onSubmit={handleCreateSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
-                            <div className="form-row">
+                            <form className="modal__body" onSubmit={handleCreateTimetable}>
                                 <div className="form-group">
-                                    <label className="form-label">Course</label>
-                                    <select
-                                        className="form-input"
-                                        value={form.course}
-                                        onChange={(e) => setForm((f) => ({ ...f, course: e.target.value }))}
-                                        required
-                                    >
-                                        <option value="">Select a course…</option>
-                                        {courses.map((c) => (
-                                            <option key={c._id} value={c._id}>{c.title} ({c.code})</option>
-                                        ))}
+                                    <label className="form-label">Academic year *</label>
+                                    <select className="form-input" value={createForm.academicYear} onChange={(e) => setCreateForm((f) => ({ ...f, academicYear: e.target.value, structureRef: '' }))} required>
+                                        <option value="">Select year</option>
+                                        {years.map((y) => <option key={y._id} value={y._id}>{y.name}{y.isActive ? ' ✓' : ''}</option>)}
                                     </select>
                                 </div>
                                 <div className="form-group">
-                                    <label className="form-label">Term</label>
-                                    <input
-                                        type="text"
-                                        className="form-input"
-                                        placeholder="e.g. 2025-2026 Semester 1"
-                                        value={form.term}
-                                        onChange={(e) => setForm((f) => ({ ...f, term: e.target.value }))}
-                                        required
-                                    />
+                                    <label className="form-label">Timetable structure *</label>
+                                    <select className="form-input" value={createForm.structureRef} onChange={(e) => {
+                                        const s = structures.find((x) => x._id === e.target.value);
+                                        setCreateForm((f) => ({ ...f, structureRef: e.target.value, semester: s?.semester || 1 }));
+                                    }} required>
+                                        <option value="">Select structure</option>
+                                        {structures.filter((s) => !createForm.academicYear || (s.academicYear?._id || s.academicYear) === createForm.academicYear).map((s) => (
+                                            <option key={s._id} value={s._id}>{s.name || `Semester ${s.semester}`} — {s.periods.length} periods, {s.workingDays.length} days</option>
+                                        ))}
+                                    </select>
                                 </div>
-                            </div>
-
-                            <div className="form-group">
-                                <label className="form-label">Working Days</label>
-                                <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
-                                    {ALL_DAYS.map((day) => (
-                                        <button
-                                            type="button"
-                                            key={day}
-                                            onClick={() => toggleDay(day)}
-                                            className={`badge ${form.workingDays.includes(day) ? 'badge-success' : ''}`}
-                                            style={{
-                                                cursor: 'pointer',
-                                                border: '1px solid var(--color-border)',
-                                                background: form.workingDays.includes(day) ? undefined : 'var(--color-bg)',
-                                                color: form.workingDays.includes(day) ? undefined : 'var(--color-text-secondary)',
-                                            }}
-                                        >
-                                            {day}
-                                        </button>
-                                    ))}
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label className="form-label">Grade *</label>
+                                        <select className="form-input" value={createForm.grade} onChange={(e) => { setCreateForm((f) => ({ ...f, grade: e.target.value, section: '' })); if (e.target.value) dispatch(fetchSections({ grade: e.target.value, academicYear: createForm.academicYear })); }} required>
+                                            <option value="">Select grade</option>
+                                            {grades.filter((g) => !createForm.academicYear || (g.academicYear?._id || g.academicYear) === createForm.academicYear).sort((a, b) => a.gradeNumber - b.gradeNumber).map((g) => (
+                                                <option key={g._id} value={g._id}>{g.name}{g.stream !== 'none' ? ` (${g.stream})` : ''}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">Section *</label>
+                                        <select className="form-input" value={createForm.section} onChange={(e) => setCreateForm((f) => ({ ...f, section: e.target.value }))} disabled={!createForm.grade} required>
+                                            <option value="">Select section</option>
+                                            {sections.filter((s) => (s.grade?._id || s.grade) === createForm.grade).map((s) => (
+                                                <option key={s._id} value={s._id}>Grade {s.grade?.gradeNumber}{s.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </div>
-                            </div>
-
-                            <div className="form-group">
-                                <div className="card-header" style={{ marginBottom: 0 }}>
-                                    <label className="form-label">Periods</label>
-                                    <button type="button" className="btn btn-outline btn-sm" onClick={addPeriod}>+ Add Period</button>
+                                <div className="form-group">
+                                    <label className="form-label">Term label *</label>
+                                    <input className="form-input" value={createForm.term} onChange={(e) => setCreateForm((f) => ({ ...f, term: e.target.value }))} required placeholder="e.g. Grade 9A — 2024-2025 Semester 1" />
                                 </div>
-
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)', marginTop: 'var(--space-sm)' }}>
-                                    {form.periods.map((p, idx) => (
-                                        <div key={idx} className="form-row" style={{ gridTemplateColumns: '60px 1fr 1fr 1.5fr auto auto', alignItems: 'end', gap: 'var(--space-sm)' }}>
-                                            <div className="form-group">
-                                                <label className="form-label">#</label>
-                                                <input className="form-input" value={idx + 1} disabled />
-                                            </div>
-                                            <div className="form-group">
-                                                <label className="form-label">Start</label>
-                                                <input
-                                                    type="time"
-                                                    className="form-input"
-                                                    value={p.startTime}
-                                                    onChange={(e) => handlePeriodChange(idx, 'startTime', e.target.value)}
-                                                    required
-                                                />
-                                            </div>
-                                            <div className="form-group">
-                                                <label className="form-label">End</label>
-                                                <input
-                                                    type="time"
-                                                    className="form-input"
-                                                    value={p.endTime}
-                                                    onChange={(e) => handlePeriodChange(idx, 'endTime', e.target.value)}
-                                                    required
-                                                />
-                                            </div>
-                                            <div className="form-group">
-                                                <label className="form-label">Label (optional)</label>
-                                                <input
-                                                    className="form-input"
-                                                    placeholder="e.g. Lunch Break"
-                                                    value={p.label}
-                                                    onChange={(e) => handlePeriodChange(idx, 'label', e.target.value)}
-                                                />
-                                            </div>
-                                            <div className="form-group">
-                                                <label className="form-label">Break?</label>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={p.isBreak}
-                                                    onChange={(e) => handlePeriodChange(idx, 'isBreak', e.target.checked)}
-                                                    style={{ width: 20, height: 20 }}
-                                                />
-                                            </div>
-                                            <div className="form-group">
-                                                <label className="form-label">&nbsp;</label>
-                                                <button
-                                                    type="button"
-                                                    className="btn btn-danger btn-sm"
-                                                    onClick={() => removePeriod(idx)}
-                                                    disabled={form.periods.length === 1}
-                                                >
-                                                    Remove
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
+                                <div className="modal__footer">
+                                    <button type="button" className="btn btn-ghost" onClick={() => setShowCreateModal(false)}>Cancel</button>
+                                    <button type="submit" className="btn btn-primary" disabled={createSaving}>
+                                        {createSaving ? <><span className="spinner" /> Creating…</> : 'Create & open editor →'}
+                                    </button>
                                 </div>
-                            </div>
-
-                            <div className="modal__footer" style={{ borderTop: 'none', paddingTop: 0 }}>
-                                <button type="button" className="btn btn-ghost" onClick={() => { resetForm(); setView('list'); }}>Cancel</button>
-                                <button type="submit" className="btn btn-primary" disabled={loading}>
-                                    {loading ? <span className="spinner" /> : 'Create Timetable'}
-                                </button>
-                            </div>
-                        </form>
+                            </form>
+                        </div>
                     </div>
-                </div>
+                )}
+
+                {/* Delete confirm */}
+                {deleteTarget && (
+                    <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
+                        <div className="modal" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
+                            <div className="modal__header"><h2 className="modal__title">Delete timetable</h2><button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(null)}>✕</button></div>
+                            <div className="modal__body">
+                                <p style={{ color: 'var(--color-text-secondary)' }}>Delete <strong>{deleteTarget.term}</strong>? All slot assignments will be lost.</p>
+                                <div className="modal__footer">
+                                    <button className="btn btn-ghost" onClick={() => setDeleteTarget(null)}>Cancel</button>
+                                    <button className="btn btn-danger" onClick={confirmDelete}>Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // EDIT / GRID VIEW
-    // ─────────────────────────────────────────────────────────────────────────
-    if (view === 'edit') {
-        if (loading && !current) {
-            return (
-                <div className="app-shell">
-                    <Sidebar />
-                    <div className="main-content">
-                        <div className="topbar">
-                            <h1 className="topbar__title">Timetable management</h1>
-                            <div className="topbar__right"><NotificationBell /></div>
-                        </div>
-                        <div className="page-body"><p>Loading timetable…</p></div>
-                    </div>
-                </div>
-            );
-        }
-        if (!current) {
-            return (
-                <div className="app-shell">
-                    <Sidebar />
-                    <div className="main-content">
-                        <div className="topbar">
-                            <h1 className="topbar__title">Timetable management</h1>
-                            <div className="topbar__right"><NotificationBell /></div>
-                        </div>
-                        <div className="page-body">
-                            <p>Timetable not found.</p>
-                            <button className="btn btn-ghost" onClick={backToList}>← Back to list</button>
-                        </div>
-                    </div>
-                </div>
-            );
-        }
+    // ── GRID EDITOR ───────────────────────────────────────────────────────────
 
-        const courseSubjects = subjectsForCourse(current.course?._id || current.course);
+    if (view === 'editor') {
+        if (loading && !current) return (
+            <div className="app-shell"><Sidebar /><div className="main-content"><div className="page-body"><div className="spinner" style={{ borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} /></div></div></div>
+        );
+
+        if (!current) return (
+            <div className="app-shell"><Sidebar /><div className="main-content"><div className="page-body"><p>Not found.</p><button className="btn btn-ghost" onClick={backToList}>← Back</button></div></div></div>
+        );
+
+        const filledSlots = current.slots?.filter((s) => s.subjects?.length && !s.isBreak).length || 0;
+        const totalSlots  = current.slots?.filter((s) => !s.isBreak).length || 0;
+        const pct = totalSlots > 0 ? Math.round(filledSlots / totalSlots * 100) : 0;
 
         return (
             <div className="app-shell">
                 <Sidebar />
                 <div className="main-content">
                     <div className="topbar">
-                        <h1 className="topbar__title">Timetable management</h1>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+                            <button className="btn btn-ghost btn-sm" onClick={backToList}>← Back</button>
+                            <h1 className="topbar__title">
+                                Grade {current.grade?.gradeNumber}{current.section?.name} — {current.term}
+                            </h1>
+                        </div>
                         <div className="topbar__right">
+                            <button className="btn btn-secondary btn-sm" onClick={() => handleDownloadSectionPdf(current)} disabled={downloadingId === current._id}>
+                                {downloadingId === current._id ? <span className="spinner" /> : '⬇ Download PDF'}
+                            </button>
                             <NotificationBell />
                         </div>
                     </div>
+
                     <div className="page-body">
-                        <div className="dashboard-welcome">
-                            <div className="dashboard-welcome__text">
-                                <h2>{courseLabel(current.course)}</h2>
-                                <p>{current.term} · {current.workingDays.length} days · {current.periods.length} periods</p>
+                        {/* Progress bar */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-lg)', marginBottom: 'var(--space-lg)', flexWrap: 'wrap' }}>
+                            <div style={{ flex: 1, minWidth: 200 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: '0.8125rem' }}>
+                                    <span style={{ color: 'var(--color-text-secondary)' }}>Grid completion</span>
+                                    <span style={{ fontWeight: 600 }}>{filledSlots}/{totalSlots} slots ({pct}%)</span>
+                                </div>
+                                <div style={{ height: 8, background: 'var(--color-border)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', width: `${pct}%`, background: pct === 100 ? '#059669' : 'var(--color-primary)', transition: 'width 0.4s ease', borderRadius: 'var(--radius-full)' }} />
+                                </div>
                             </div>
-                            <button className="btn btn-ghost" onClick={backToList}>← Back to list</button>
+                            <span className={`badge ${current.isActive ? 'badge-success' : 'badge-error'}`}>{current.isActive ? 'Active' : 'Inactive'}</span>
+                            {current.section?.room && <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>🏠 {current.section.room}</span>}
+                        </div>
+
+                        <div className="alert alert-info" style={{ marginBottom: 'var(--space-lg)', fontSize: '0.8125rem' }}>
+                            Click any cell to assign a subject. Only teachers who are <strong>free at that period</strong> will be shown as available. Busy teachers are shown greyed out as a reference.
                         </div>
 
                         {error && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{error}</div>}
+                        {downloadError && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{downloadError}</div>}
 
-                        <div className="card" style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
+                        <div className="card" style={{ overflowX: 'auto', padding: 0 }}>
+                            <table className="tt-grid">
                                 <thead>
                                 <tr>
-                                    <th style={{ textAlign: 'left', padding: 'var(--space-sm)', borderBottom: '1px solid var(--color-border)', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
-                                        Period
-                                    </th>
-                                    {current.workingDays.map((day) => (
-                                        <th key={day} style={{ textAlign: 'left', padding: 'var(--space-sm)', borderBottom: '1px solid var(--color-border)', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
-                                            {day}
+                                    <th className="tt-grid__period-col">Period</th>
+                                    {current.workingDays?.map((day) => (
+                                        <th key={day} className="tt-grid__day-col">
+                                            <div>{day.slice(0, 3)}</div>
+                                            <div style={{ fontSize: '0.7rem', fontWeight: 400 }}>{day}</div>
                                         </th>
                                     ))}
                                 </tr>
                                 </thead>
                                 <tbody>
-                                {[...current.periods].sort((a, b) => a.number - b.number).map((period) => (
+                                {[...(current.periods || [])].sort((a, b) => a.number - b.number).map((period) => (
                                     <tr key={period.number}>
-                                        <td style={{ padding: 'var(--space-sm)', borderBottom: '1px solid var(--color-border)', verticalAlign: 'top' }}>
-                                            <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                                                {period.isBreak ? (period.label || 'Break') : `Period ${period.number}`}
+                                        <td className="tt-grid__period-cell">
+                                            <div style={{ fontWeight: 600, fontSize: '0.8125rem' }}>
+                                                {period.isBreak ? (period.label || 'Break') : `P${period.number}`}
                                             </div>
-                                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                                {period.startTime} – {period.endTime}
+                                            <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                                                {period.startTime}–{period.endTime}
                                             </div>
                                         </td>
-                                        {current.workingDays.map((day) => {
+                                        {current.workingDays?.map((day) => {
                                             if (period.isBreak) {
                                                 return (
-                                                    <td key={day} style={{ padding: 'var(--space-sm)', borderBottom: '1px solid var(--color-border)', background: 'var(--color-bg)' }}>
-                                                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                                                    <td key={day} className="tt-grid__break-cell">
                                                         {period.label || 'Break'}
-                                                    </span>
                                                     </td>
                                                 );
                                             }
-                                            const slot = getSlot(day, period.number);
-                                            const subject = slot?.subject;
+                                            const slot     = getSlot(day, period.number);
+                                            const subjects = slot?.subjects || [];
                                             return (
                                                 <td
                                                     key={day}
+                                                    className={`tt-grid__slot-cell ${subjects.length ? 'tt-grid__slot-cell--filled' : 'tt-grid__slot-cell--empty'}`}
                                                     onClick={() => openSlotModal(day, period)}
-                                                    style={{
-                                                        padding: 'var(--space-sm)',
-                                                        borderBottom: '1px solid var(--color-border)',
-                                                        cursor: 'pointer',
-                                                        transition: 'background var(--transition-fast)',
-                                                    }}
-                                                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-primary-light)'}
-                                                    onMouseLeave={(e) => e.currentTarget.style.background = ''}
                                                 >
-                                                    {subject ? (
-                                                        <div>
-                                                            <div style={{ fontWeight: 500, fontSize: '0.8125rem' }}>{subject.name}</div>
-                                                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                                                {subject.code}{subject.teacher?.name ? ` · ${subject.teacher.name}` : ''}
-                                                            </div>
-                                                        </div>
+                                                    {subjects.length ? (
+                                                        <>
+                                                            {subjects.map((subject) => (
+                                                                <div key={subject._id} style={{ marginBottom: 2 }}>
+                                                                    <div className="tt-slot-name">{subject.name}</div>
+                                                                    <div className="tt-slot-code">{subject.code}</div>
+                                                                </div>
+                                                            ))}
+                                                            {slot.bucket && (
+                                                                <div style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>
+                                                                    🪣 {slot.bucket}
+                                                                </div>
+                                                            )}
+                                                        </>
                                                     ) : (
-                                                        <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>+ Add subject</span>
+                                                        <span className="tt-slot-free">+ Assign</span>
                                                     )}
                                                 </td>
                                             );
@@ -547,44 +935,298 @@ export default function TimetableManager() {
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
 
-                        {/* Slot assignment modal */}
-                        {slotModal && (
-                            <div className="modal-overlay" onClick={() => setSlotModal(null)}>
-                                <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
-                                    <div className="modal__header">
-                                        <div className="modal__title">{slotModal.day} · Period {slotModal.period}</div>
+                {/* Slot assignment modal */}
+                {slotModal && (
+                    <div className="modal-overlay" onClick={() => { setSlotModal(null); setConflictError(''); dispatch(clearLastSync()); }}>
+                        <div className="modal" style={{ maxWidth: 500 }} onClick={(e) => e.stopPropagation()}>
+                            <div className="modal__header">
+                                <div className="modal__title">{slotModal.day} · Period {slotModal.period}</div>
+                                <button className="btn btn-ghost btn-sm" onClick={() => { setSlotModal(null); setConflictError(''); dispatch(clearLastSync()); }}>✕</button>
+                            </div>
+                            <div className="modal__body">
+                                {conflictError && (
+                                    <div className="alert alert-error" style={{ marginBottom: 'var(--space-md)' }}>
+                                        ⚠ {conflictError}
                                     </div>
-                                    <div className="modal__body">
-                                        <div className="form-group">
-                                            <label className="form-label">Subject</label>
-                                            <select
-                                                className="form-input"
-                                                value={slotModal.currentSubject}
-                                                onChange={(e) => setSlotModal((m) => ({ ...m, currentSubject: e.target.value }))}
-                                            >
-                                                <option value="">— Free / unassigned —</option>
-                                                {courseSubjects.map((s) => (
-                                                    <option key={s._id} value={s._id}>
-                                                        {s.name} ({s.code}){s.teacher?.name ? ` · ${s.teacher.name}` : ''}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            {courseSubjects.length === 0 && (
-                                                <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                                            No subjects found for this course.
-                                        </span>
+                                )}
+
+                                {lastSync && (lastSync.applied?.length > 0 || lastSync.skipped?.length > 0) && (
+                                    <div className="alert alert-info" style={{ marginBottom: 'var(--space-md)', fontSize: '0.8125rem' }}>
+                                        {lastSync.applied?.length > 0 && (
+                                            <div>✓ Synced to: {lastSync.applied.join(', ')}</div>
+                                        )}
+                                        {lastSync.skipped?.length > 0 && (
+                                            <div style={{ color: '#DC2626' }}>
+                                                ⚠ Skipped: {lastSync.skipped.map((s) => `${s.section} (${s.reason})`).join(', ')}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {subjectsLoading ? (
+                                    <div className="empty-state" style={{ padding: 'var(--space-xl)' }}>
+                                        <div className="spinner" style={{ borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} />
+                                        <p>Checking teacher availability…</p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* Free subjects */}
+                                        <div style={{ marginBottom: 'var(--space-lg)' }}>
+                                            <p style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#059669', marginBottom: 'var(--space-sm)' }}>
+                                                ✓ Available ({freeSubjects.length})
+                                            </p>
+                                            {freeSubjects.length === 0 ? (
+                                                <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
+                                                    No subjects with free teachers at this slot. Assign teachers to subjects first in Subject Teacher Assignments.
+                                                </p>
+                                            ) : (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
+                                                    {freeSubjects.map((s) => {
+                                                        const isCurrent = slotModal.currentSubjectIds?.includes(s._id);
+                                                        return (
+                                                            <button
+                                                                key={s._id}
+                                                                className={`tt-subject-option ${isCurrent ? 'tt-subject-option--current' : ''}`}
+                                                                onClick={() => handleAssignSubject(s._id)}
+                                                                disabled={slotSaving}
+                                                            >
+                                                                <div>
+                                                                    <span style={{ fontWeight: 600 }}>{s.name}</span>
+                                                                    <span style={{ color: 'var(--color-primary)', fontWeight: 700, marginLeft: 8, fontSize: '0.8125rem' }}>{s.code}</span>
+                                                                    {isCurrent && <span style={{ color: '#059669', marginLeft: 8, fontSize: '0.8125rem' }}>← Current</span>}
+                                                                </div>
+                                                                <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                                                                    👨‍🏫 {s.teacher?.name || 'No teacher'}
+                                                                    {s.bucket && <span style={{ marginLeft: 8, color: 'var(--color-text-muted)' }}>🪣 {s.bucket} — picking this fills the slot with every {s.bucket} option</span>}
+                                                                </div>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
                                             )}
                                         </div>
-                                    </div>
-                                    <div className="modal__footer">
-                                        <button className="btn btn-ghost" onClick={() => setSlotModal(null)}>Cancel</button>
-                                        <button className="btn btn-primary" onClick={() => handleAssignSubject(slotModal.currentSubject)} disabled={loading}>
-                                            {loading ? <span className="spinner" /> : 'Save'}
+
+                                        {/* Busy subjects — shown for reference */}
+                                        {busySubjects.length > 0 && (
+                                            <div>
+                                                <p style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#DC2626', marginBottom: 'var(--space-sm)' }}>
+                                                    ✕ Teacher busy at this slot ({busySubjects.length})
+                                                </p>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
+                                                    {busySubjects.map((s) => (
+                                                        <div key={s._id} className="tt-subject-option tt-subject-option--busy">
+                                                            <div>
+                                                                <span style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>{s.name}</span>
+                                                                <span style={{ color: 'var(--color-text-muted)', marginLeft: 8, fontSize: '0.8125rem' }}>{s.code}</span>
+                                                            </div>
+                                                            <div style={{ fontSize: '0.8125rem', color: '#DC2626', marginTop: 2 }}>
+                                                                👨‍🏫 {s.teacher?.name || '—'} — busy in another class
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'var(--space-md)', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={applyToGrade}
+                                        onChange={(e) => setApplyToGrade(e.target.checked)}
+                                    />
+                                    Sync elective buckets to this same period across every section in this grade
+                                </label>
+
+                                <div className="modal__footer">
+                                    <button className="btn btn-ghost" onClick={() => { setSlotModal(null); setConflictError(''); dispatch(clearLastSync()); }}>Cancel</button>
+                                    {slotModal.currentSubjectIds?.length > 0 && (
+                                        <button className="btn btn-danger" onClick={() => handleAssignSubject(null)} disabled={slotSaving}>
+                                            {slotSaving ? <span className="spinner" /> : 'Clear slot'}
                                         </button>
-                                    </div>
+                                    )}
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    // ── BY-TEACHER LIST VIEW ─────────────────────────────────────────────────
+
+    if (view === 'teachers') {
+        return (
+            <div className="app-shell">
+                <Sidebar />
+                <div className="main-content">
+                    <div className="topbar">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setView('list')}>← Section timetables</button>
+                            <h1 className="topbar__title">Timetables by teacher</h1>
+                        </div>
+                        <div className="topbar__right">
+                            <NotificationBell />
+                            <button className="btn btn-secondary btn-sm" onClick={handleDownloadAllTeachersPdf} disabled={downloadingAllTeachers || teachers.length === 0}>
+                                {downloadingAllTeachers ? <span className="spinner" /> : '⬇ Download all'}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="page-body">
+                        {downloadError && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{downloadError}</div>}
+                        {error && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{error}</div>}
+
+                        <input
+                            className="form-input"
+                            style={{ maxWidth: 320, marginBottom: 'var(--space-lg)' }}
+                            placeholder="Search teachers by name or email…"
+                            value={teacherSearch}
+                            onChange={(e) => setTeacherSearch(e.target.value)}
+                        />
+
+                        {teachersLoading ? (
+                            <div className="empty-state"><div className="spinner" style={{ width: 36, height: 36, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} /></div>
+                        ) : filteredTeachers.length === 0 ? (
+                            <div className="empty-state">
+                                <div className="empty-state__icon">👥</div>
+                                <p>No teachers found.</p>
+                            </div>
+                        ) : (
+                            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                                <table className="data-table">
+                                    <thead>
+                                    <tr>
+                                        <th>Teacher</th>
+                                        <th>Email</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {filteredTeachers.map((t) => (
+                                        <tr key={t._id}>
+                                            <td style={{ fontWeight: 600 }}>{t.name}</td>
+                                            <td style={{ color: 'var(--color-text-secondary)' }}>{t.email}</td>
+                                            <td>
+                                                <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
+                                                    <button className="btn btn-primary btn-sm" onClick={() => openTeacherSchedule(t._id)}>View schedule</button>
+                                                    <button className="btn btn-outline btn-sm" onClick={() => handleDownloadTeacherPdf(t)} disabled={downloadingId === t._id}>
+                                                        {downloadingId === t._id ? <span className="spinner" /> : '⬇ PDF'}
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // ── SINGLE TEACHER SCHEDULE VIEW ─────────────────────────────────────────
+
+    if (view === 'teacherView') {
+        const teacher = teacherView?.teacher;
+        const hasSchedule = mergedTeacherGrid && mergedTeacherGrid.periods.length > 0;
+
+        return (
+            <div className="app-shell">
+                <Sidebar />
+                <div className="main-content">
+                    <div className="topbar">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+                            <button className="btn btn-ghost btn-sm" onClick={backFromTeacherSchedule}>← Teachers</button>
+                            <h1 className="topbar__title">{teacher?.name || 'Teacher schedule'}</h1>
+                        </div>
+                        <div className="topbar__right">
+                            <NotificationBell />
+                            {teacher && (
+                                <button className="btn btn-secondary btn-sm" onClick={() => handleDownloadTeacherPdf(teacher)} disabled={downloadingId === teacher._id}>
+                                    {downloadingId === teacher._id ? <span className="spinner" /> : '⬇ Download PDF'}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="page-body">
+                        {downloadError && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{downloadError}</div>}
+                        {error && <div className="alert alert-error" style={{ marginBottom: 'var(--space-lg)' }}>{error}</div>}
+
+                        {teacherViewLoading ? (
+                            <div className="empty-state"><div className="spinner" style={{ width: 36, height: 36, borderWidth: 3, borderColor: 'rgba(79,70,229,0.2)', borderTopColor: '#4F46E5' }} /></div>
+                        ) : !hasSchedule ? (
+                            <div className="empty-state">
+                                <div className="empty-state__icon">🗓</div>
+                                <p>This teacher has no classes assigned in any active timetable yet.</p>
+                            </div>
+                        ) : (
+                            <>
+                                <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: 'var(--space-lg)' }}>
+                                    {mergedTeacherGrid.workingDays.length} days · {mergedTeacherGrid.periods.length} periods · across {teacherView.timetables.length} section{teacherView.timetables.length !== 1 ? 's' : ''}
+                                </p>
+                                <div className="card" style={{ overflowX: 'auto', padding: 0 }}>
+                                    <table className="tt-grid">
+                                        <thead>
+                                        <tr>
+                                            <th className="tt-grid__period-col">Period</th>
+                                            {mergedTeacherGrid.workingDays.map((day) => (
+                                                <th key={day} className="tt-grid__day-col">
+                                                    <div>{DAY_SHORT[day] || day}</div>
+                                                    <div style={{ fontSize: '0.7rem', fontWeight: 400 }}>{day}</div>
+                                                </th>
+                                            ))}
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        {mergedTeacherGrid.periods.map((period) => (
+                                            <tr key={period.number}>
+                                                <td className="tt-grid__period-cell">
+                                                    <div style={{ fontWeight: 600, fontSize: '0.8125rem' }}>
+                                                        {period.isBreak ? (period.label || 'Break') : `P${period.number}`}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                                                        {period.startTime}–{period.endTime}
+                                                    </div>
+                                                </td>
+                                                {mergedTeacherGrid.workingDays.map((day) => {
+                                                    if (period.isBreak) {
+                                                        return <td key={day} className="tt-grid__break-cell">{period.label || 'Break'}</td>;
+                                                    }
+                                                    const entries = getMergedEntries(day, period.number);
+                                                    return (
+                                                        <td key={day} className={`tt-grid__slot-cell ${entries.length ? 'tt-grid__slot-cell--filled' : 'tt-grid__slot-cell--empty'}`}>
+                                                            {entries.length ? (
+                                                                entries.map((e, i) => (
+                                                                    <div key={i} style={{ marginBottom: 4 }}>
+                                                                        <div className="tt-slot-name">{e.subject.name}</div>
+                                                                        <div className="tt-slot-code">{e.subject.code}</div>
+                                                                        <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                                                                            Grade {e.sectionLabel}
+                                                                            {e.bucket && <span> · 🪣 {e.bucket}</span>}
+                                                                        </div>
+                                                                    </div>
+                                                                ))
+                                                            ) : (
+                                                                <span className="tt-slot-free">—</span>
+                                                            )}
+                                                        </td>
+                                                    );
+                                                })}
+                                            </tr>
+                                        ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </>
                         )}
                     </div>
                 </div>

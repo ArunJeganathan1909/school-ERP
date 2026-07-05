@@ -1,23 +1,32 @@
 const Fee = require('../models/Fee');
+const Section = require('../models/Section');
+const StudentSection = require('../models/StudentSection');
 const { notify } = require('../socket/socketHelpers');
+
+const FEE_POPULATE = [
+    { path: 'student', select: 'name email profilePhoto' },
+    { path: 'section', select: 'name grade academicYear', populate: { path: 'grade', select: 'name gradeNumber' } },
+    { path: 'academicYear', select: 'name' },
+];
 
 // GET /api/fees - admin: all fees with filters
 exports.getAllFees = async (req, res) => {
     try {
-        const { student, course, status, academicYear, page = 1, limit = 20 } = req.query;
+        const { student, section, grade, academicYear, semester, status, page = 1, limit = 20 } = req.query;
 
         const filter = {};
         if (student)      filter.student      = student;
-        if (course)       filter.course       = course;
-        if (status && status.trim())       filter.status       = status;   // ← only add if non-empty
+        if (section)      filter.section      = section;
+        if (grade)        filter.grade        = grade;
         if (academicYear) filter.academicYear = academicYear;
+        if (semester)     filter.semester     = Number(semester);
+        if (status && status.trim())       filter.status       = status;   // ← only add if non-empty
 
         const skip = (Number(page) - 1) * Number(limit);
 
         const [fees, total] = await Promise.all([
             Fee.find(filter)
-                .populate('student', 'name email profilePhoto')
-                .populate('course',  'title code')
+                .populate(FEE_POPULATE)
                 .skip(skip)
                 .limit(Number(limit))
                 .sort({ dueDate: 1 }),
@@ -66,7 +75,7 @@ exports.getMyFees = async (req, res) => {
         if (status) filter.status = status;
 
         const fees = await Fee.find(filter)
-            .populate('course', 'title code')
+            .populate(FEE_POPULATE)
             .sort({ dueDate: 1 });
 
         const totalDue = fees
@@ -92,7 +101,8 @@ exports.getFee = async (req, res) => {
     try {
         const fee = await Fee.findById(req.params.id)
             .populate('student', 'name email phone')
-            .populate('course', 'title code')
+            .populate({ path: 'section', select: 'name grade academicYear', populate: { path: 'grade', select: 'name gradeNumber' } })
+            .populate('academicYear', 'name')
             .populate('payments.recordedBy', 'name');
 
         if (!fee) res.status(404).json({
@@ -100,7 +110,7 @@ exports.getFee = async (req, res) => {
             message: 'Fee not found',
         });
 
-    //     Students can only view own fees
+        //     Students can only view own fees
         if (req.user.role === 'student' && String(fee.student._id) !== String(req.user._id)) {
             return res.status(403).json({
                 success: false,
@@ -121,19 +131,62 @@ exports.getFee = async (req, res) => {
     }
 }
 
-// POST /api/fees - admin creates a fee invoice
+// POST /api/fees - admin creates a single ad-hoc fee invoice for one student.
+// If `section` isn't passed explicitly, it's derived from the student's
+// current active StudentSection.
 exports.createFee = async (req, res) => {
     try {
-        const fee = await Fee.create(req.body);
-        await fee.populate([
-            { path: 'student', select: 'name email' },
-            { path: 'course', select: 'title code' },
-        ]);
+        const { student, feeType, title, totalAmount, discount, dueDate, semester } = req.body;
+        let { section } = req.body;
+
+        if (!student) {
+            return res.status(400).json({ success: false, message: 'Student is required' });
+        }
+
+        let sectionDoc;
+        if (section) {
+            sectionDoc = await Section.findById(section);
+        } else {
+            const studentSection = await StudentSection.findOne({ student, status: 'active' });
+            if (!studentSection) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'This student has no active section — assign one first, or pass a section explicitly.',
+                });
+            }
+            section = studentSection.section;
+            sectionDoc = await Section.findById(section);
+        }
+
+        if (!sectionDoc) {
+            return res.status(404).json({ success: false, message: 'Section not found' });
+        }
+
+        const fee = await Fee.create({
+            student,
+            section: sectionDoc._id,
+            grade: sectionDoc.grade,
+            academicYear: sectionDoc.academicYear,
+            feeType,
+            title,
+            totalAmount,
+            discount: discount || 0,
+            dueDate,
+            semester: semester || sectionDoc.currentSemester || 1,
+        });
+
+        await fee.populate(FEE_POPULATE);
         res.status(201).json({
             success: true,
             fee
         })
     } catch (error) {
+        if (error.code === 11000) {
+            return res.status(409).json({
+                success: false,
+                message: 'This student already has an identical fee invoice for this term.',
+            });
+        }
         res.status(500).json({
             success: false,
             message: error.message,
@@ -141,38 +194,64 @@ exports.createFee = async (req, res) => {
     }
 }
 
-// POST /api/fees/bulk — admin: create same fee for multiple students
-exports.bulkCreateFees = async (req, res) => {
+// POST /api/fees/bulk-section — admin: generate the same recurring fee
+// invoice for every active student in a section (e.g. "Semester 2 tuition"
+// for Grade 7A). This is the normal way to bill a whole class each term.
+exports.bulkCreateFeesForSection = async (req, res) => {
     try {
-        const { studentIds, courseId, feeType, title, totalAmount, discount, dueDate, academicYear, semester } = req.body;
+        const { section, feeType, title, totalAmount, discount, dueDate, semester } = req.body;
 
-        const feeData = studentIds.map((studentId) => ({
-            student: studentId,
-            course: courseId,
+        if (!section) {
+            return res.status(400).json({ success: false, message: 'Section is required' });
+        }
+
+        const sectionDoc = await Section.findById(section);
+        if (!sectionDoc) {
+            return res.status(404).json({ success: false, message: 'Section not found' });
+        }
+
+        const studentSections = await StudentSection.find({ section, status: 'active' });
+        if (studentSections.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No active students found in this section.',
+            });
+        }
+
+        const resolvedSemester = semester || sectionDoc.currentSemester || 1;
+
+        const feeData = studentSections.map((ss) => ({
+            student: ss.student,
+            section: sectionDoc._id,
+            grade: sectionDoc.grade,
+            academicYear: sectionDoc.academicYear,
             feeType,
             title,
             totalAmount,
             discount: discount || 0,
             dueDate,
-            academicYear,
-            semester,
+            semester: resolvedSemester,
         }));
 
-        const fees = await Fee.insertMany(feeData, { ordered: false });
+        const result = await Fee.insertMany(feeData, { ordered: false });
 
         res.status(201).json({
             success: true,
-            message: `${fees.length} fee records created`,
-            count: fees.length,
+            message: `${result.length} of ${feeData.length} fee invoices created`,
+            count: result.length,
+            expected: feeData.length,
         });
     } catch (error) {
-    //     Handle duplicate key errors gracefully
-        if (error.code === 11000) {
+        // Some students in the section may already have this exact invoice
+        // (duplicate key on student+section+academicYear+semester+title) —
+        // that's expected when re-running for stragglers, not a hard failure.
+        if (error.code === 11000 || error.writeErrors) {
+            const inserted = error.insertedDocs?.length ?? error.result?.nInserted ?? 0;
             return res.status(207).json({
                 success: true,
-                message: 'Some records may already exist',
-                error: error.message,
-            })
+                message: `${inserted} fee invoice(s) created. Some students already had this invoice for this term.`,
+                count: inserted,
+            });
         }
         res.status(500).json({
             success: false,
@@ -192,6 +271,7 @@ exports.updateFee = async (req, res) => {
 
         Object.assign(fee, req.body);
         await fee.save();  // triggers pre-save recalculation
+        await fee.populate(FEE_POPULATE);
 
         res.status(200).json({
             success: true,
@@ -235,10 +315,7 @@ exports.recordPayment = async (req, res) => {
         await fee.save();
 
         // Populate and return
-        await fee.populate([
-            { path: 'student', select: 'name email' },
-            { path: 'course',  select: 'title code' },
-        ]);
+        await fee.populate(FEE_POPULATE);
 
         res.status(200).json({ success: true, fee });
     } catch (err) {
