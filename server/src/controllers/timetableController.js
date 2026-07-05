@@ -468,7 +468,7 @@ exports.getMyTimetableAsStudent = async (req, res) => {
         });
 
         if (!studentSection) {
-            return res.status(200).json({ success: true, timetable: null, message: 'Not assigned to any section' });
+            return res.status(200).json({ success: true, timetables: [], message: 'Not assigned to any section' });
         }
 
         const semester = studentSection.section?.academicYear?.currentSemester || 1;
@@ -477,7 +477,15 @@ exports.getMyTimetableAsStudent = async (req, res) => {
             Timetable.findOne({ section: studentSection.section._id, semester, isActive: true })
         );
 
-        res.status(200).json({ success: true, timetable: timetable || null, section: studentSection, semester });
+        // Matches the shape fetchMyTimetableAsStudent's thunk expects
+        // (same "timetables" array key as getMyTimetableAsTeacher), plus
+        // the student's section/semester context for the page header.
+        res.status(200).json({
+            success:   true,
+            timetables: timetable ? [timetable] : [],
+            section:   studentSection,
+            semester,
+        });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -519,7 +527,8 @@ exports.getMyTimetableAsTeacher = async (req, res) => {
                 ) || false,
             }));
             return obj;
-        });
+        });678
+         
 
         res.status(200).json({ success: true, timetables: withFlag });
     } catch (err) {

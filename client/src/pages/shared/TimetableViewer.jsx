@@ -92,8 +92,13 @@ export default function TimetableViewer() {
                                                     <div key={period.number} className="tt-today-slot">
                                                         <div className="tt-today-slot__time">{period.startTime}–{period.endTime}</div>
                                                         <div className="tt-today-slot__subject">
-                                                            {slot?.subject
-                                                                ? <><strong>{slot.subject.name}</strong><span>{slot.subject.teacher?.name || ''}</span></>
+                                                            {slot?.subjects?.length
+                                                                ? slot.subjects.map((subj) => (
+                                                                    <div key={subj._id}>
+                                                                        <strong>{subj.name}</strong>
+                                                                        <span>{subj.teacher?.name || ''}</span>
+                                                                    </div>
+                                                                ))
                                                                 : <span style={{ color: 'var(--color-text-muted)' }}>Free period</span>
                                                             }
                                                         </div>
@@ -137,26 +142,35 @@ export default function TimetableViewer() {
                                                             </td>
                                                         );
                                                     }
-                                                    const slot = getSlot(tt, day, period.number);
-                                                    const subject = slot?.subject;
+                                                    const slot     = getSlot(tt, day, period.number);
+                                                    const subjects = slot?.subjects || [];
                                                     const isMyClass = isTeacher && slot?.isMyClass;
-                                                    const isToday = day === todayName;
+                                                    const isToday   = day === todayName;
                                                     return (
                                                         <td
                                                             key={day}
                                                             className={[
                                                                 'tt-grid__slot-cell',
-                                                                subject ? 'tt-grid__slot-cell--filled' : '',
+                                                                subjects.length ? 'tt-grid__slot-cell--filled' : '',
                                                                 isMyClass ? 'tt-grid__slot-cell--mine' : '',
                                                                 isToday ? 'tt-grid__slot-cell--today' : '',
                                                             ].join(' ')}
                                                         >
-                                                            {subject ? (
+                                                            {subjects.length ? (
                                                                 <>
-                                                                    <div className="tt-slot-name">{subject.name}</div>
-                                                                    <div className="tt-slot-code">{subject.code}</div>
-                                                                    {subject.teacher?.name && (
-                                                                        <div className="tt-slot-teacher">{subject.teacher.name}</div>
+                                                                    {subjects.map((subject) => (
+                                                                        <div key={subject._id} style={{ marginBottom: 4 }}>
+                                                                            <div className="tt-slot-name">{subject.name}</div>
+                                                                            <div className="tt-slot-code">{subject.code}</div>
+                                                                            {subject.teacher?.name && (
+                                                                                <div className="tt-slot-teacher">{subject.teacher.name}</div>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                    {slot.bucket && (
+                                                                        <div style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>
+                                                                            🪣 {slot.bucket}
+                                                                        </div>
                                                                     )}
                                                                 </>
                                                             ) : (
