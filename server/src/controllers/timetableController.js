@@ -520,6 +520,7 @@ exports.getMyTimetableAsTeacher = async (req, res) => {
                 .filter((a) => String(a.section) === String(tt.section?._id || tt.section))
                 .map((a) => String(a.subject));
 
+            obj.myTeacherSubjectIds = teacherSubjectsInSection;
             obj.slots = obj.slots.map((slot) => ({
                 ...slot,
                 isMyClass: slot.subjects?.some((subj) =>
@@ -527,8 +528,7 @@ exports.getMyTimetableAsTeacher = async (req, res) => {
                 ) || false,
             }));
             return obj;
-        });678
-         
+        });
 
         res.status(200).json({ success: true, timetables: withFlag });
     } catch (err) {
