@@ -3,6 +3,10 @@ const TimetableStructure       = require('../models/TimetableStructure');
 const StudentSection           = require('../models/StudentSection');
 const Subject                  = require('../models/Subject');
 const SubjectTeacherAssignment = require('../models/SubjectTeacherAssignment');
+const PDFDocument              = require('pdfkit');
+const { addHeader }            = require('../utils/pdfGenerator');
+
+const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -14,6 +18,185 @@ const populateTimetable = (query) =>
         .populate('structureRef', 'name workingDays periods')
         .populate('createdBy',    'name email')
         .populate('slots.subjects', 'name code credits bucket');
+
+// A small fixed palette, deterministically assigned per section/bucket name
+// so the same section always gets the same color across a document.
+const PALETTE = ['#4F46E5', '#059669', '#D97706', '#DC2626', '#7C3AED', '#0891B2', '#DB2777', '#65A30D'];
+function colorForKey(key) {
+    if (!key) return COLORS_LOCAL.primary;
+    let hash = 0;
+    for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+    return PALETTE[hash % PALETTE.length];
+}
+
+// Local copy of the palette pdfGenerator.js uses internally, so this file
+// doesn't need to reach into its private constants.
+const COLORS_LOCAL = {
+    primary: '#4F46E5',
+    primaryDark: '#3730A3',
+    dark: '#111827',
+    muted: '#6B7280',
+    border: '#E5E7EB',
+    zebra: '#FAFBFF',
+    breakBg: '#F3F4F6',
+};
+
+// Draws a bordered day×period grid with colored, multi-line cell entries.
+// `getCellEntries(day, periodNumber)` must return an array of
+// { title, subtitle, color } — one per subject occupying that slot.
+function drawTimetableGrid(doc, { workingDays, periods, getCellEntries, todayName }) {
+    const marginX     = 40;
+    const tableWidth  = doc.page.width - marginX * 2;
+    const periodColW  = 95;
+    const dayColW     = (tableWidth - periodColW) / (workingDays.length || 1);
+    const headerH     = 26;
+    let y = doc.y;
+
+    const drawColumnHeaders = () => {
+        doc.rect(marginX, y, periodColW, headerH).fill(COLORS_LOCAL.primaryDark);
+        doc.fillColor('#FFFFFF').fontSize(9).font('Helvetica-Bold')
+            .text('PERIOD', marginX, y + 9, { width: periodColW, align: 'center' });
+
+        workingDays.forEach((day, i) => {
+            const x = marginX + periodColW + i * dayColW;
+            doc.rect(x, y, dayColW, headerH).fill(day === todayName ? COLORS_LOCAL.primaryDark : COLORS_LOCAL.primary);
+            doc.fillColor('#FFFFFF').fontSize(9).font('Helvetica-Bold')
+                .text(day.toUpperCase(), x, y + 9, { width: dayColW, align: 'center' });
+        });
+        y += headerH;
+    };
+
+    drawColumnHeaders();
+
+    periods.forEach((period, rowIdx) => {
+        let maxEntries = 1;
+        if (!period.isBreak) {
+            workingDays.forEach((day) => {
+                maxEntries = Math.max(maxEntries, getCellEntries(day, period.number).length || 1);
+            });
+        }
+        const rowH = period.isBreak ? 24 : Math.max(42, 16 + maxEntries * 24);
+
+        if (y + rowH > doc.page.height - 70) {
+            doc.addPage();
+            y = 50;
+            drawColumnHeaders();
+        }
+
+        if (period.isBreak) {
+            doc.rect(marginX, y, tableWidth, rowH).fill(COLORS_LOCAL.breakBg);
+            doc.fillColor(COLORS_LOCAL.muted).fontSize(8.5).font('Helvetica-Oblique')
+                .text(`${period.label || 'Break'}   ${period.startTime}–${period.endTime}`, marginX, y + 7, { width: tableWidth, align: 'center' });
+            doc.strokeColor(COLORS_LOCAL.border).lineWidth(0.5)
+                .rect(marginX, y, tableWidth, rowH).stroke();
+            y += rowH;
+            return;
+        }
+
+        if (rowIdx % 2 === 0) {
+            doc.rect(marginX, y, tableWidth, rowH).fill(COLORS_LOCAL.zebra);
+        }
+
+        doc.fillColor(COLORS_LOCAL.dark).fontSize(9.5).font('Helvetica-Bold')
+            .text(`P${period.number}`, marginX + 8, y + 8);
+        doc.fillColor(COLORS_LOCAL.muted).fontSize(7.5).font('Helvetica')
+            .text(`${period.startTime}–${period.endTime}`, marginX + 8, y + 21, { width: periodColW - 12 });
+
+        workingDays.forEach((day, i) => {
+            const x = marginX + periodColW + i * dayColW;
+            const entries = getCellEntries(day, period.number);
+
+            if (entries.length === 0) {
+                doc.fillColor(COLORS_LOCAL.muted).fontSize(9).font('Helvetica')
+                    .text('—', x, y + rowH / 2 - 5, { width: dayColW, align: 'center' });
+            } else {
+                let cellY = y + (rowH - entries.length * 24) / 2 + 2;
+                entries.forEach((entry) => {
+                    doc.rect(x + 6, cellY, 3, 18).fill(entry.color || COLORS_LOCAL.primary);
+                    doc.fillColor(COLORS_LOCAL.dark).fontSize(8.5).font('Helvetica-Bold')
+                        .text(entry.title, x + 13, cellY, { width: dayColW - 18, lineBreak: false });
+                    doc.fillColor(COLORS_LOCAL.muted).fontSize(7).font('Helvetica')
+                        .text(entry.subtitle, x + 13, cellY + 11, { width: dayColW - 18, lineBreak: false });
+                    cellY += 24;
+                });
+            }
+        });
+
+        // Grid lines for this row
+        doc.strokeColor(COLORS_LOCAL.border).lineWidth(0.5);
+        for (let i = 0; i <= workingDays.length; i++) {
+            const lx = marginX + periodColW + i * dayColW;
+            doc.moveTo(lx, y).lineTo(lx, y + rowH).stroke();
+        }
+        doc.moveTo(marginX, y).lineTo(marginX, y + rowH).stroke();
+        doc.moveTo(marginX, y + rowH).lineTo(marginX + tableWidth, y + rowH).stroke();
+
+        y += rowH;
+    });
+
+    doc.y = y + 16;
+}
+
+// Small color-key legend under the grid — e.g. one swatch per section for a
+// teacher's merged schedule, or one per elective bucket for a student.
+function drawLegend(doc, items) {
+    if (!items || items.length === 0) return;
+    const marginX = 40;
+
+    // If there isn't roughly enough room left for a legend line, start a
+    // fresh page ourselves rather than letting pdfkit silently add one
+    // mid-write (which is what was causing one extra page per item).
+    if (doc.y + 40 > doc.page.height - doc.page.margins.bottom) {
+        doc.addPage();
+    }
+
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor(COLORS_LOCAL.muted)
+        .text('LEGEND', marginX, doc.y);
+    doc.moveDown(0.6);
+
+    doc.fontSize(8).font('Helvetica'); // fixed size used for every swatch label below
+    let lx = marginX;
+    let ly = doc.y;
+    items.forEach((item) => {
+        const labelW = doc.widthOfString(item.label);
+        if (lx + 20 + labelW > doc.page.width - marginX) {
+            lx = marginX;
+            ly += 16;
+            if (ly + 16 > doc.page.height - doc.page.margins.bottom) {
+                doc.addPage();
+                ly = doc.y;
+            }
+        }
+        doc.rect(lx, ly, 8, 8).fill(item.color);
+        doc.fillColor(COLORS_LOCAL.dark).fontSize(8).font('Helvetica')
+            .text(item.label, lx + 12, ly - 1, { lineBreak: false });
+        lx += 20 + labelW + 16;
+    });
+    doc.y = ly + 20;
+}
+
+// Stamps "Generated on <date>" + "Page X of Y" on every buffered page.
+// Requires the PDFDocument to be created with { bufferPages: true }.
+function addFooters(doc) {
+    const range = doc.bufferedPageRange();
+    for (let i = range.start; i < range.start + range.count; i++) {
+        doc.switchToPage(i);
+
+        // Writing this close to the bottom edge would normally make pdfkit
+        // think the content overflowed and silently start a new page —
+        // temporarily suppress that so the footer actually lands on the
+        // page we just switched to.
+        const originalBottomMargin = doc.page.margins.bottom;
+        doc.page.margins.bottom = 0;
+
+        const y = doc.page.height - 30;
+        doc.fontSize(7.5).fillColor(COLORS_LOCAL.muted).font('Helvetica')
+            .text(`Generated on ${new Date().toLocaleDateString()}`, 40, y, { lineBreak: false });
+        doc.text(`Page ${i - range.start + 1} of ${range.count}`, doc.page.width - 140, y, { width: 100, align: 'right', lineBreak: false });
+
+        doc.page.margins.bottom = originalBottomMargin;
+    }
+}
 
 // ── POST /api/timetables ──────────────────────────────────────────────────────
 // Create a timetable for a section from a structure
@@ -533,5 +716,177 @@ exports.getMyTimetableAsTeacher = async (req, res) => {
         res.status(200).json({ success: true, timetables: withFlag });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
+    }
+};
+// ── GET /api/timetables/my/student/pdf ───────────────────────────────────────
+// Student downloads their own section's timetable as a PDF.
+exports.downloadMyTimetablePdfAsStudent = async (req, res) => {
+    try {
+        const studentSection = await StudentSection.findOne({
+            student: req.user._id,
+            status:  'active',
+        }).populate({
+            path:     'section',
+            populate: [
+                { path: 'grade',        select: 'gradeNumber name' },
+                { path: 'academicYear', select: 'currentSemester name' },
+            ],
+        });
+
+        if (!studentSection) {
+            return res.status(404).json({ success: false, message: 'Not assigned to any section' });
+        }
+
+        const semester = studentSection.section?.academicYear?.currentSemester || 1;
+
+        const timetable = await populateTimetable(
+            Timetable.findOne({ section: studentSection.section._id, semester, isActive: true })
+        );
+
+        if (!timetable) {
+            return res.status(404).json({ success: false, message: 'No timetable found for your section' });
+        }
+
+        const sectionLabel = `Grade ${studentSection.section?.grade?.gradeNumber || ''}${studentSection.section?.name || ''}`;
+        const todayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
+
+        const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape', bufferPages: true });
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="timetable-${sectionLabel.replace(/\s+/g, '')}.pdf"`);
+        doc.pipe(res);
+
+        addHeader(
+            doc,
+            'Class Timetable',
+            `${sectionLabel}  ·  ${timetable.term}  ·  Semester ${timetable.semester}  ·  ${studentSection.section?.academicYear?.name || ''}  ·  ${req.user.name || ''}`
+        );
+
+        const workingDays = timetable.workingDays || [];
+        const periods      = [...(timetable.periods || [])].sort((a, b) => a.number - b.number);
+        const bucketsUsed  = new Set();
+
+        const getCellEntries = (day, periodNumber) => {
+            const slot = timetable.slots.find((s) => s.day === day && s.period === periodNumber);
+            if (!slot?.subjects?.length) return [];
+            return slot.subjects.map((subj) => {
+                if (slot.bucket) bucketsUsed.add(slot.bucket);
+                return {
+                    title:    subj.name,
+                    subtitle: subj.code,
+                    color:    colorForKey(slot.bucket || subj.code),
+                };
+            });
+        };
+
+        drawTimetableGrid(doc, { workingDays, periods, getCellEntries, todayName });
+
+        const legendItems = [...bucketsUsed].map((bucket) => ({ label: bucket, color: colorForKey(bucket) }));
+        drawLegend(doc, legendItems);
+
+        addFooters(doc);
+        doc.end();
+    } catch (err) {
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: err.message });
+        } else {
+            res.end();
+        }
+    }
+};
+
+// ── GET /api/timetables/my/teacher/pdf ───────────────────────────────────────
+// Teacher downloads ONE merged PDF across every section they teach —
+// mirrors the merged grid shown in TimetableViewer.jsx.
+exports.downloadMyTimetablePdfAsTeacher = async (req, res) => {
+    try {
+        const assignments = await SubjectTeacherAssignment.find({
+            teacher:  req.user._id,
+            isActive: true,
+        }).select('subject section');
+
+        if (assignments.length === 0) {
+            return res.status(404).json({ success: false, message: 'No classes assigned yet' });
+        }
+
+        const sectionIds = [...new Set(assignments.map((a) => String(a.section)))];
+
+        const timetables = await populateTimetable(
+            Timetable.find({ section: { $in: sectionIds }, isActive: true })
+        );
+
+        const workingDaysSet  = new Set();
+        const periodsByNumber = new Map();
+        const cellMap         = new Map(); // "day|period" -> [{ subject, sectionLabel }]
+
+        timetables.forEach((tt) => {
+            const obj = tt.toObject ? tt.toObject({ virtuals: true }) : tt;
+
+            obj.workingDays?.forEach((d) => workingDaysSet.add(d));
+            obj.periods?.forEach((p) => {
+                if (!periodsByNumber.has(p.number)) periodsByNumber.set(p.number, p);
+            });
+
+            const teacherSubjectsInSection = assignments
+                .filter((a) => String(a.section) === String(obj.section?._id || obj.section))
+                .map((a) => String(a.subject));
+
+            const sectionLabel = obj.section
+                ? `${obj.grade?.gradeNumber || ''}${obj.section?.name}`
+                : obj.term;
+
+            obj.slots?.forEach((slot) => {
+                const mySubjects = (slot.subjects || []).filter((s) =>
+                    teacherSubjectsInSection.includes(String(s._id || s))
+                );
+                if (mySubjects.length === 0) return;
+
+                const key     = `${slot.day}|${slot.period}`;
+                const entries = cellMap.get(key) || [];
+                mySubjects.forEach((subject) => entries.push({ subject, sectionLabel }));
+                cellMap.set(key, entries);
+            });
+        });
+
+        const workingDays = DAY_ORDER.filter((d) => workingDaysSet.has(d));
+        const periods      = [...periodsByNumber.values()].sort((a, b) => a.number - b.number);
+        const todayName    = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
+        const sectionsUsed = new Set();
+
+        const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape', bufferPages: true });
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="my-teaching-schedule.pdf"`);
+        doc.pipe(res);
+
+        addHeader(
+            doc,
+            'Teaching Schedule',
+            `${req.user.name || 'Teacher'}  ·  across ${timetables.length} section${timetables.length !== 1 ? 's' : ''}`
+        );
+
+        const getCellEntries = (day, periodNumber) => {
+            const entries = cellMap.get(`${day}|${periodNumber}`) || [];
+            return entries.map((e) => {
+                sectionsUsed.add(e.sectionLabel);
+                return {
+                    title:    e.subject.name,
+                    subtitle: `Grade ${e.sectionLabel}`,
+                    color:    colorForKey(e.sectionLabel),
+                };
+            });
+        };
+
+        drawTimetableGrid(doc, { workingDays, periods, getCellEntries, todayName });
+
+        const legendItems = [...sectionsUsed].map((label) => ({ label: `Grade ${label}`, color: colorForKey(label) }));
+        drawLegend(doc, legendItems);
+
+        addFooters(doc);
+        doc.end();
+    } catch (err) {
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: err.message });
+        } else {
+            res.end();
+        }
     }
 };

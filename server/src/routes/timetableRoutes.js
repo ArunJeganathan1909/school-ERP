@@ -8,6 +8,10 @@ const { authorize } = require('../middleware/roleMiddleware');
 router.get('/my/student',  protect, authorize('student'), c.getMyTimetableAsStudent);
 router.get('/my/teacher',  protect, authorize('teacher','admin'), c.getMyTimetableAsTeacher);
 
+// ── PDF downloads — must also be before /:id ─────────────────────────────────
+router.get('/my/student/pdf', protect, authorize('student'), c.downloadMyTimetablePdfAsStudent);
+router.get('/my/teacher/pdf', protect, authorize('teacher','admin'), c.downloadMyTimetablePdfAsTeacher);
+
 // ── Free-subject query for slot assignment ────────────────────────────────────
 router.get('/free-subjects', protect, authorize('admin'), c.getFreeSubjectsForSlot);
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import Sidebar from '../../components/Sidebar';
 import NotificationBell from '../../components/NotificationBell';
@@ -6,6 +6,7 @@ import {
     fetchMyTimetableAsStudent,
     fetchMyTimetableAsTeacher,
 } from '../../store/slices/timetableSlice';
+import api from '../../api/axios';
 import './TimetableViewer.css';
 
 const DAY_SHORT = { Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed', Thursday: 'Thu', Friday: 'Fri', Saturday: 'Sat', Sunday: 'Sun' };
@@ -77,6 +78,27 @@ export default function TimetableViewer() {
 
     const getMergedEntries = (day, periodNumber) => merged?.cellMap.get(`${day}|${periodNumber}`) || [];
 
+    const [downloading, setDownloading] = useState(false);
+
+    const handleDownloadPdf = async () => {
+        setDownloading(true);
+        try {
+            const url = isStudent ? '/timetables/my/student/pdf' : '/timetables/my/teacher/pdf';
+            const response = await api.get(url, { responseType: 'blob' });
+            const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.setAttribute('download', isStudent ? 'my-timetable.pdf' : 'my-teaching-schedule.pdf');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(blobUrl);
+        } catch (err) {
+            console.error('Failed to download timetable PDF', err);
+        }
+        setDownloading(false);
+    };
+
     return (
         <div className="app-shell">
             <Sidebar />
@@ -86,6 +108,11 @@ export default function TimetableViewer() {
                         {isStudent ? 'My timetable' : 'My classes'}
                     </h1>
                     <div className="topbar__right">
+                        {!loading && !error && timetables?.length > 0 && (
+                            <button className="btn btn-secondary btn-sm" onClick={handleDownloadPdf} disabled={downloading} style={{ marginRight: 'var(--space-sm)' }}>
+                                {downloading ? <span className="spinner" /> : '⬇ Download PDF'}
+                            </button>
+                        )}
                         <NotificationBell />
                     </div>
                 </div>
