@@ -127,30 +127,35 @@ function buildMergedTeacherGrid(assignments, timetables) {
 // Draws one teacher's merged schedule (header + grid + legend) onto whatever
 // page `doc` is currently on. Caller decides page breaks between teachers.
 function drawMergedTeacherPage(doc, { teacherName, grid, todayName, sectionsCount }) {
-    const sectionsUsed = new Set();
-
     addHeader(
         doc,
         'Teaching Schedule',
         `${teacherName || 'Teacher'}  ·  across ${sectionsCount} section${sectionsCount !== 1 ? 's' : ''}`
     );
 
+    // Pre-pass over the already-built cell map to see which sections
+    // actually appear, so the legend can be laid out in a sidebar next to
+    // the grid (rather than discovered mid-draw and tacked on below it).
+    const sectionsUsed = new Set();
+    grid.cellMap.forEach((entries) => entries.forEach((e) => sectionsUsed.add(e.sectionLabel)));
+    const legendItems = [...sectionsUsed].sort()
+        .map((label) => ({ label: `Grade ${label}`, color: colorForKey(label) }));
+
+    const gridStartY = doc.y;
+    const sidebarW    = legendItems.length ? sidebarWidthFor(doc, legendItems) : 0;
+    const legendEndY  = sidebarW ? drawLegendSidebar(doc, legendItems, doc.page.width - 40 - sidebarW, gridStartY, sidebarW) : gridStartY;
+
     const getCellEntries = (day, periodNumber) => {
         const entries = grid.cellMap.get(`${day}|${periodNumber}`) || [];
-        return entries.map((e) => {
-            sectionsUsed.add(e.sectionLabel);
-            return {
-                title:    e.subject.name,
-                subtitle: `Grade ${e.sectionLabel}`,
-                color:    colorForKey(e.sectionLabel),
-            };
-        });
+        return entries.map((e) => ({
+            title:    e.subject.name,
+            subtitle: `Grade ${e.sectionLabel}`,
+            color:    colorForKey(e.sectionLabel),
+        }));
     };
 
-    drawTimetableGrid(doc, { workingDays: grid.workingDays, periods: grid.periods, getCellEntries, todayName });
-
-    const legendItems = [...sectionsUsed].map((label) => ({ label: `Grade ${label}`, color: colorForKey(label) }));
-    drawLegend(doc, legendItems);
+    drawTimetableGrid(doc, { workingDays: grid.workingDays, periods: grid.periods, getCellEntries, todayName, startY: gridStartY, sidebarW });
+    doc.y = Math.max(doc.y, legendEndY);
 }
 
 // Draws one section's schedule (header + grid + legend) onto whatever page
@@ -164,37 +169,44 @@ function drawSectionSchedulePage(doc, { timetable, sectionLabel, subtitleExtra, 
 
     const workingDays = timetable.workingDays || [];
     const periods      = [...(timetable.periods || [])].sort((a, b) => a.number - b.number);
-    const bucketsUsed  = new Set();
+
+    // Pre-pass over the slots to see which elective buckets actually appear,
+    // so the legend can be laid out in a sidebar next to the grid (rather
+    // than discovered mid-draw and tacked on below it).
+    const bucketsUsed = new Set();
+    (timetable.slots || []).forEach((slot) => { if (slot.bucket) bucketsUsed.add(slot.bucket); });
+    const legendItems = [...bucketsUsed].sort()
+        .map((bucket) => ({ label: bucket, color: colorForKey(bucket) }));
+
+    const gridStartY = doc.y;
+    const sidebarW    = legendItems.length ? sidebarWidthFor(doc, legendItems) : 0;
+    const legendEndY  = sidebarW ? drawLegendSidebar(doc, legendItems, doc.page.width - 40 - sidebarW, gridStartY, sidebarW) : gridStartY;
 
     const getCellEntries = (day, periodNumber) => {
         const slot = timetable.slots.find((s) => s.day === day && s.period === periodNumber);
         if (!slot?.subjects?.length) return [];
-        return slot.subjects.map((subj) => {
-            if (slot.bucket) bucketsUsed.add(slot.bucket);
-            return {
-                title:    subj.name,
-                subtitle: subj.code,
-                color:    colorForKey(slot.bucket || subj.code),
-            };
-        });
+        return slot.subjects.map((subj) => ({
+            title:    subj.name,
+            subtitle: subj.code,
+            color:    colorForKey(slot.bucket || subj.code),
+        }));
     };
 
-    drawTimetableGrid(doc, { workingDays, periods, getCellEntries, todayName });
-
-    const legendItems = [...bucketsUsed].map((bucket) => ({ label: bucket, color: colorForKey(bucket) }));
-    drawLegend(doc, legendItems);
+    drawTimetableGrid(doc, { workingDays, periods, getCellEntries, todayName, startY: gridStartY, sidebarW });
+    doc.y = Math.max(doc.y, legendEndY);
 }
 
 // Draws a bordered day×period grid with colored, multi-line cell entries.
 // `getCellEntries(day, periodNumber)` must return an array of
 // { title, subtitle, color } — one per subject occupying that slot.
-function drawTimetableGrid(doc, { workingDays, periods, getCellEntries, todayName }) {
+function drawTimetableGrid(doc, { workingDays, periods, getCellEntries, todayName, startY, sidebarW = 0 }) {
     const marginX     = 40;
-    const tableWidth  = doc.page.width - marginX * 2;
+    const sidebarGap  = sidebarW ? 16 : 0;
+    const tableWidth  = doc.page.width - marginX * 2 - sidebarW - sidebarGap;
     const periodColW  = 95;
     const dayColW     = (tableWidth - periodColW) / (workingDays.length || 1);
     const headerH     = 26;
-    let y = doc.y;
+    let y = startY !== undefined ? startY : doc.y;
 
     const drawColumnHeaders = () => {
         doc.rect(marginX, y, periodColW, headerH).fill(COLORS_LOCAL.primaryDark);
@@ -281,42 +293,34 @@ function drawTimetableGrid(doc, { workingDays, periods, getCellEntries, todayNam
     doc.y = y + 16;
 }
 
-// Small color-key legend under the grid — e.g. one swatch per section for a
-// teacher's merged schedule, or one per elective bucket for a student.
-function drawLegend(doc, items) {
-    if (!items || items.length === 0) return;
-    const marginX = 40;
+// How wide the legend sidebar needs to be to fit its longest label,
+// clamped to a sensible range so it never crowds out the grid.
+function sidebarWidthFor(doc, items) {
+    doc.fontSize(8).font('Helvetica');
+    const maxLabelW = items.reduce((max, item) => Math.max(max, doc.widthOfString(item.label)), 0);
+    return Math.min(160, Math.max(90, maxLabelW + 24));
+}
 
-    // If there isn't roughly enough room left for a legend line, start a
-    // fresh page ourselves rather than letting pdfkit silently add one
-    // mid-write (which is what was causing one extra page per item).
-    if (doc.y + 40 > doc.page.height - doc.page.margins.bottom) {
-        doc.addPage();
-    }
+// Small color-key legend drawn as a vertical sidebar to the right of the
+// grid — e.g. one swatch per section for a teacher's merged schedule, or
+// one per elective bucket for a student — so it sits beside the timetable
+// instead of competing with it for space below and spilling onto its own
+// page. Drawn at fixed coordinates so it never disturbs doc.y / the grid's
+// own flow. Returns the y position just past the last item drawn.
+function drawLegendSidebar(doc, items, x, y, width) {
+    if (!items || items.length === 0) return y;
 
     doc.fontSize(7.5).font('Helvetica-Bold').fillColor(COLORS_LOCAL.muted)
-        .text('LEGEND', marginX, doc.y);
-    doc.moveDown(0.6);
+        .text('LEGEND', x, y, { width, lineBreak: false });
 
-    doc.fontSize(8).font('Helvetica'); // fixed size used for every swatch label below
-    let lx = marginX;
-    let ly = doc.y;
+    let ly = y + 14;
     items.forEach((item) => {
-        const labelW = doc.widthOfString(item.label);
-        if (lx + 20 + labelW > doc.page.width - marginX) {
-            lx = marginX;
-            ly += 16;
-            if (ly + 16 > doc.page.height - doc.page.margins.bottom) {
-                doc.addPage();
-                ly = doc.y;
-            }
-        }
-        doc.rect(lx, ly, 8, 8).fill(item.color);
+        doc.rect(x, ly + 1, 8, 8).fill(item.color);
         doc.fillColor(COLORS_LOCAL.dark).fontSize(8).font('Helvetica')
-            .text(item.label, lx + 12, ly - 1, { lineBreak: false });
-        lx += 20 + labelW + 16;
+            .text(item.label, x + 13, ly, { width: width - 13, lineBreak: false });
+        ly += 16;
     });
-    doc.y = ly + 20;
+    return ly;
 }
 
 // Stamps "Generated on <date>" + "Page X of Y" on every buffered page.
