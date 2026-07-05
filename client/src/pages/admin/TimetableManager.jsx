@@ -5,7 +5,7 @@ import NotificationBell from '../../components/NotificationBell';
 import {
     fetchTimetables, fetchTimetable, createTimetable,
     updateTimetable, updateSlot, deleteTimetable,
-    clearTimetableError, clearCurrentTimetable,
+    clearTimetableError, clearCurrentTimetable, clearLastSync,
 } from '../../store/slices/timetableSlice';
 import {
     fetchStructures, createStructure, updateStructure, deleteStructure,
@@ -21,7 +21,7 @@ const emptyPeriod = (num) => ({ number: num, startTime: '07:30', endTime: '08:10
 
 export default function TimetableManager() {
     const dispatch = useDispatch();
-    const { list, current, loading, error } = useSelector((s) => s.timetables);
+    const { list, current, loading, error, lastSync } = useSelector((s) => s.timetables);
     const { list: structures } = useSelector((s) => s.timetableStructures);
     const { list: years }    = useSelector((s) => s.academicYears);
     const { list: grades }   = useSelector((s) => s.grades);
@@ -61,6 +61,7 @@ export default function TimetableManager() {
     const [subjectsLoading, setSubjectsLoading] = useState(false);
     const [conflictError,   setConflictError]   = useState('');
     const [slotSaving,      setSlotSaving]      = useState(false);
+    const [applyToGrade,    setApplyToGrade]    = useState(true); // sync elective buckets across the grade's sections
 
     const [deleteTarget, setDeleteTarget] = useState(null);
 
@@ -213,7 +214,15 @@ export default function TimetableManager() {
     const openSlotModal = async (day, period) => {
         if (period.isBreak || !current) return;
         setConflictError('');
-        setSlotModal({ day, period: period.number, currentSubjectId: getSlot(day, period.number)?.subject?._id || null });
+        dispatch(clearLastSync());
+        const existingSlot = getSlot(day, period.number);
+        setSlotModal({
+            day,
+            period: period.number,
+            currentSubjectIds: existingSlot?.subjects?.map((s) => s._id) || [],
+            currentBucket: existingSlot?.bucket || null,
+        });
+        setApplyToGrade(true);
         setSubjectsLoading(true);
         setFreeSubjects([]);
         setBusySubjects([]);
@@ -241,6 +250,7 @@ export default function TimetableManager() {
             day:      slotModal.day,
             period:   slotModal.period,
             subjectId: subjectId || null,
+            applyToGrade,
         }));
         setSlotSaving(false);
         if (result.error) {
@@ -522,7 +532,7 @@ export default function TimetableManager() {
                                     </thead>
                                     <tbody>
                                     {list.map((tt) => {
-                                        const filledSlots = tt.slots?.filter((s) => s.subject && !s.isBreak).length || 0;
+                                        const filledSlots = tt.slots?.filter((s) => s.subjects?.length && !s.isBreak).length || 0;
                                         const totalSlots  = tt.slots?.filter((s) => !s.isBreak).length || 0;
                                         return (
                                             <tr key={tt._id}>
@@ -656,7 +666,7 @@ export default function TimetableManager() {
             <div className="app-shell"><Sidebar /><div className="main-content"><div className="page-body"><p>Not found.</p><button className="btn btn-ghost" onClick={backToList}>← Back</button></div></div></div>
         );
 
-        const filledSlots = current.slots?.filter((s) => s.subject && !s.isBreak).length || 0;
+        const filledSlots = current.slots?.filter((s) => s.subjects?.length && !s.isBreak).length || 0;
         const totalSlots  = current.slots?.filter((s) => !s.isBreak).length || 0;
         const pct = totalSlots > 0 ? Math.round(filledSlots / totalSlots * 100) : 0;
 
@@ -728,18 +738,27 @@ export default function TimetableManager() {
                                                     </td>
                                                 );
                                             }
-                                            const slot    = getSlot(day, period.number);
-                                            const subject = slot?.subject;
+                                            const slot     = getSlot(day, period.number);
+                                            const subjects = slot?.subjects || [];
                                             return (
                                                 <td
                                                     key={day}
-                                                    className={`tt-grid__slot-cell ${subject ? 'tt-grid__slot-cell--filled' : 'tt-grid__slot-cell--empty'}`}
+                                                    className={`tt-grid__slot-cell ${subjects.length ? 'tt-grid__slot-cell--filled' : 'tt-grid__slot-cell--empty'}`}
                                                     onClick={() => openSlotModal(day, period)}
                                                 >
-                                                    {subject ? (
+                                                    {subjects.length ? (
                                                         <>
-                                                            <div className="tt-slot-name">{subject.name}</div>
-                                                            <div className="tt-slot-code">{subject.code}</div>
+                                                            {subjects.map((subject) => (
+                                                                <div key={subject._id} style={{ marginBottom: 2 }}>
+                                                                    <div className="tt-slot-name">{subject.name}</div>
+                                                                    <div className="tt-slot-code">{subject.code}</div>
+                                                                </div>
+                                                            ))}
+                                                            {slot.bucket && (
+                                                                <div style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>
+                                                                    🪣 {slot.bucket}
+                                                                </div>
+                                                            )}
                                                         </>
                                                     ) : (
                                                         <span className="tt-slot-free">+ Assign</span>
@@ -757,16 +776,29 @@ export default function TimetableManager() {
 
                 {/* Slot assignment modal */}
                 {slotModal && (
-                    <div className="modal-overlay" onClick={() => { setSlotModal(null); setConflictError(''); }}>
+                    <div className="modal-overlay" onClick={() => { setSlotModal(null); setConflictError(''); dispatch(clearLastSync()); }}>
                         <div className="modal" style={{ maxWidth: 500 }} onClick={(e) => e.stopPropagation()}>
                             <div className="modal__header">
                                 <div className="modal__title">{slotModal.day} · Period {slotModal.period}</div>
-                                <button className="btn btn-ghost btn-sm" onClick={() => { setSlotModal(null); setConflictError(''); }}>✕</button>
+                                <button className="btn btn-ghost btn-sm" onClick={() => { setSlotModal(null); setConflictError(''); dispatch(clearLastSync()); }}>✕</button>
                             </div>
                             <div className="modal__body">
                                 {conflictError && (
                                     <div className="alert alert-error" style={{ marginBottom: 'var(--space-md)' }}>
                                         ⚠ {conflictError}
+                                    </div>
+                                )}
+
+                                {lastSync && (lastSync.applied?.length > 0 || lastSync.skipped?.length > 0) && (
+                                    <div className="alert alert-info" style={{ marginBottom: 'var(--space-md)', fontSize: '0.8125rem' }}>
+                                        {lastSync.applied?.length > 0 && (
+                                            <div>✓ Synced to: {lastSync.applied.join(', ')}</div>
+                                        )}
+                                        {lastSync.skipped?.length > 0 && (
+                                            <div style={{ color: '#DC2626' }}>
+                                                ⚠ Skipped: {lastSync.skipped.map((s) => `${s.section} (${s.reason})`).join(', ')}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -788,24 +820,27 @@ export default function TimetableManager() {
                                                 </p>
                                             ) : (
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
-                                                    {freeSubjects.map((s) => (
-                                                        <button
-                                                            key={s._id}
-                                                            className={`tt-subject-option ${slotModal.currentSubjectId === s._id ? 'tt-subject-option--current' : ''}`}
-                                                            onClick={() => handleAssignSubject(s._id)}
-                                                            disabled={slotSaving}
-                                                        >
-                                                            <div>
-                                                                <span style={{ fontWeight: 600 }}>{s.name}</span>
-                                                                <span style={{ color: 'var(--color-primary)', fontWeight: 700, marginLeft: 8, fontSize: '0.8125rem' }}>{s.code}</span>
-                                                                {slotModal.currentSubjectId === s._id && <span style={{ color: '#059669', marginLeft: 8, fontSize: '0.8125rem' }}>← Current</span>}
-                                                            </div>
-                                                            <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)', marginTop: 2 }}>
-                                                                👨‍🏫 {s.teacher?.name || 'No teacher'}
-                                                                {s.bucket && <span style={{ marginLeft: 8, color: 'var(--color-text-muted)' }}>🪣 {s.bucket}</span>}
-                                                            </div>
-                                                        </button>
-                                                    ))}
+                                                    {freeSubjects.map((s) => {
+                                                        const isCurrent = slotModal.currentSubjectIds?.includes(s._id);
+                                                        return (
+                                                            <button
+                                                                key={s._id}
+                                                                className={`tt-subject-option ${isCurrent ? 'tt-subject-option--current' : ''}`}
+                                                                onClick={() => handleAssignSubject(s._id)}
+                                                                disabled={slotSaving}
+                                                            >
+                                                                <div>
+                                                                    <span style={{ fontWeight: 600 }}>{s.name}</span>
+                                                                    <span style={{ color: 'var(--color-primary)', fontWeight: 700, marginLeft: 8, fontSize: '0.8125rem' }}>{s.code}</span>
+                                                                    {isCurrent && <span style={{ color: '#059669', marginLeft: 8, fontSize: '0.8125rem' }}>← Current</span>}
+                                                                </div>
+                                                                <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                                                                    👨‍🏫 {s.teacher?.name || 'No teacher'}
+                                                                    {s.bucket && <span style={{ marginLeft: 8, color: 'var(--color-text-muted)' }}>🪣 {s.bucket} — picking this fills the slot with every {s.bucket} option</span>}
+                                                                </div>
+                                                            </button>
+                                                        );
+                                                    })}
                                                 </div>
                                             )}
                                         </div>
@@ -834,9 +869,18 @@ export default function TimetableManager() {
                                     </>
                                 )}
 
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'var(--space-md)', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={applyToGrade}
+                                        onChange={(e) => setApplyToGrade(e.target.checked)}
+                                    />
+                                    Sync elective buckets to this same period across every section in this grade
+                                </label>
+
                                 <div className="modal__footer">
-                                    <button className="btn btn-ghost" onClick={() => { setSlotModal(null); setConflictError(''); }}>Cancel</button>
-                                    {slotModal.currentSubjectId && (
+                                    <button className="btn btn-ghost" onClick={() => { setSlotModal(null); setConflictError(''); dispatch(clearLastSync()); }}>Cancel</button>
+                                    {slotModal.currentSubjectIds?.length > 0 && (
                                         <button className="btn btn-danger" onClick={() => handleAssignSubject(null)} disabled={slotSaving}>
                                             {slotSaving ? <span className="spinner" /> : 'Clear slot'}
                                         </button>

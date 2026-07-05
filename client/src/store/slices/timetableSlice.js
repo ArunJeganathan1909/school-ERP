@@ -43,10 +43,10 @@ export const updateTimetable = createAsyncThunk('timetables/update', async ({ id
 });
 
 // ── Admin: assign / clear a subject in a slot ──
-export const updateSlot = createAsyncThunk('timetables/updateSlot', async ({ id, day, period, subjectId }, { rejectWithValue }) => {
+export const updateSlot = createAsyncThunk('timetables/updateSlot', async ({ id, day, period, subjectId, applyToGrade = true }, { rejectWithValue }) => {
     try {
-        const { data } = await api.put(`/timetables/${id}/slots`, { day, period, subjectId });
-        return data.timetable;
+        const { data } = await api.put(`/timetables/${id}/slots`, { day, period, subjectId, applyToGrade });
+        return data; // { timetable, sync: { applied, skipped } }
     } catch (err) {
         return rejectWithValue(err.response?.data?.message || 'Failed to update slot');
     }
@@ -90,10 +90,12 @@ const timetableSlice = createSlice({
         mine:    [],   // student/teacher: my timetables
         loading: false,
         error:   null,
+        lastSync: null, // { applied: [sectionNames], skipped: [{section, reason}] } from the last bucket sync
     },
     reducers: {
         clearTimetableError(state)  { state.error = null; },
         clearCurrentTimetable(state) { state.current = null; },
+        clearLastSync(state) { state.lastSync = null; },
     },
     extraReducers: (builder) => {
         builder
@@ -157,9 +159,11 @@ const timetableSlice = createSlice({
                 state.error = null;
             })
             .addCase(updateSlot.fulfilled, (state, action) => {
-                const idx = state.list.findIndex(t => t._id === action.payload._id);
-                if (idx !== -1) state.list[idx] = action.payload;
-                if (state.current?._id === action.payload._id) state.current = action.payload;
+                const timetable = action.payload.timetable;
+                const idx = state.list.findIndex(t => t._id === timetable._id);
+                if (idx !== -1) state.list[idx] = timetable;
+                if (state.current?._id === timetable._id) state.current = timetable;
+                state.lastSync = action.payload.sync || null;
                 state.error = null;
             })
             .addCase(updateSlot.rejected, (state, action) => {
@@ -209,5 +213,5 @@ const timetableSlice = createSlice({
     },
 });
 
-export const { clearTimetableError, clearCurrentTimetable } = timetableSlice.actions;
+export const { clearTimetableError, clearCurrentTimetable, clearLastSync } = timetableSlice.actions;
 export default timetableSlice.reducer;

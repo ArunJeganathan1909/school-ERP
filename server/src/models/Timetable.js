@@ -8,10 +8,21 @@ const slotSchema = new mongoose.Schema(
             required: true,
             enum:     ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'],
         },
-        subject: {
-            type:    mongoose.Schema.Types.ObjectId,
-            ref:     'Subject',
+        // One or more subjects occupying this slot. Normally length 1 (a
+        // regular mandatory subject). When this slot holds an elective
+        // bucket (e.g. Art + Music, both offered at the same period so
+        // students who picked either one attend at the same time), it
+        // holds every sibling subject in that bucket.
+        subjects: {
+            type:    [{ type: mongoose.Schema.Types.ObjectId, ref: 'Subject' }],
+            default: [],
+        },
+        // Set when `subjects` holds an elective bucket group; null for a
+        // single mandatory subject or an empty slot. Mirrors Subject.bucket.
+        bucket: {
+            type:    String,
             default: null,
+            trim:    true,
         },
         label:   { type: String, default: '' },
         isBreak: { type: Boolean, default: false },
