@@ -185,6 +185,20 @@ function drawSectionSchedulePage(doc, { timetable, sectionLabel, subtitleExtra, 
     const getCellEntries = (day, periodNumber) => {
         const slot = timetable.slots.find((s) => s.day === day && s.period === periodNumber);
         if (!slot?.subjects?.length) return [];
+
+        // A bucket slot lists every subject a student could be taking in
+        // that period (e.g. every language option). Stacking all of them
+        // in the cell makes that row — and often the whole grid — too
+        // tall to fit on one page, so once there's more than one option
+        // we collapse it to a single line naming the bucket instead.
+        if (slot.bucket && slot.subjects.length > 1) {
+            return [{
+                title:    slot.bucket,
+                subtitle: `${slot.subjects.length} options`,
+                color:    colorForKey(slot.bucket),
+            }];
+        }
+
         return slot.subjects.map((subj) => ({
             title:    subj.name,
             subtitle: subj.code,
